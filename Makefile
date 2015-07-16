@@ -747,6 +747,44 @@ mrproper: $(mrproper-dirs) clean clean_symlinks
             -o -name modules.builtin -o -name '.tmp_*.o.*' \
             -o -name '*.gcno' \) -type f -print | xargs rm -f
 
+# HELP!
+usage: help
+help:
+	@echo "Usage: make <arch> [ <config> ] [ <subcmd> ]"
+	@echo "    Valid archs are: 'x86_64', 'riscv'"
+	@echo "    Valid configs are: 'cross', 'native'"
+	@echo "    Valid subcommands are: 'build', 'uninstall', check-env' 'install-headers'"
+	@echo "    If no config is specified, the 'cross' config is assumed by default."
+	@echo "    If no subcommand is specified, the 'build' subcommand is assumed by default."
+	@echo ""
+	@echo "Additional pseudo targets exist for:"
+	@echo "    make clean"
+	@echo "        Cleanup the build environment"
+	@echo "    make inst-clean"
+	@echo "        Cleanup the build environment and uninstall all compilers for all archs."
+	@echo ""
+	@echo "For convenience, all of the valid subcommands for a cross-build of"
+	@echo "your currently configured architecture are also exported to the top"
+	@echo "level makefile as well (that is, the makefile at the root of the"
+	@echo "akaros directory, rather than the one down in"
+	@echo "tools/compilers/gcc-glibc). These targets are:"
+	@echo ""
+	@echo "make xcc"
+	@echo "make xcc-$(valid-subcommand)"
+	@echo "make xcc-$(valid-pseudo-target)"
+	@echo "make xcc-upgrade"
+	@echo "make xcc-upgrade-from-scratch"
+	@echo "(You should be able to tab complete on xcc- to see the full set of targets)"
+	@echo ""
+	@echo "The two upgrade targets will rebuild the xcc, as well as rebuild (and"
+	@echo "reinstall into kfs, if necessary) all of the bundled software that may"
+	@echo "be affected by any changes to the cross compiler (e.g. busybox,"
+	@echo "user-level libraries, test apps, etc.). The only difference between"
+	@echo "the two is that xcc-upgrade-from-scratch will force a full"
+	@echo "clean/uninstall of the xcc before attempting to rebuild it.  The"
+	@echo "xcc-upgrade target will only attempt to rebuild it from where it"
+	@echo "previously left off."
+
 # Epilogue
 # =========================================================================
 
