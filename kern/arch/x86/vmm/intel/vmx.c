@@ -1821,16 +1821,20 @@ int vmx_launch(struct vmctl *v) {
 	vmx_get_cpu(vcpu);
 	switch(v->command) {
 	case REG_ALL:
+		printk("REG_ALL\n");
 		// fallthrough
 		vcpu->regs = v->regs;
 	case REG_RSP_RIP_CR3:
+		printk("REG_RSP_RIP_CR3\n");
 		vmcs_writel(GUEST_RSP, v->regs.tf_rsp);
 		vmcs_writel(GUEST_CR3, v->cr3);
 		// fallthrough
 	case REG_RIP:
+		printk("REG_RIP\n");
 		vmcs_writel(GUEST_RIP, v->regs.tf_rip);
 		break;
 	case RESUME:
+		printk("RESUME\n");
 		break;
 	default: 
 		error("Bad command in vmx_launch");
@@ -1926,6 +1930,7 @@ int vmx_launch(struct vmctl *v) {
 
 	printd("RETURN. ip %016lx sp %016lx\n",
 	       vcpu->regs.tf_rip, vcpu->regs.tf_rsp);
+	v->regs = vcpu->regs;
 //  hexdump((void *)vcpu->regs.tf_rsp, 128 * 8);
 	/*
 	 * Return both the reason for the shutdown and a status value.

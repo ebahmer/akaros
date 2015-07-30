@@ -1018,6 +1018,10 @@ static long conswrite(struct chan *c, void *va, long n, int64_t offset)
 #endif
 		case Qvmctl:
 			memmove(&vmctl, a, sizeof(vmctl));
+			ret = vm_run(&vmctl);
+			printd("vm_run returns %d\n", ret);
+			n = ret;
+			memmove(a, &vmctl, sizeof(vmctl));
 			break;
 		case Qsysctl:
 			//if (!iseve()) error(Eperm);
