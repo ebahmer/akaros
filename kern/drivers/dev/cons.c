@@ -502,6 +502,7 @@ enum {
 	Qdir,
 	Qcons,
 	Qsysctl,
+	Qvmctl,
 	Qconsctl,
 	Qdrivers,
 	Qhostowner,
@@ -525,6 +526,7 @@ static struct dirtab consdir[] = {
 	{"cons", {Qcons}, 0, 0660},
 	{"consctl", {Qconsctl}, 0, 0220},
 	{"sysctl", {Qsysctl}, 0, 0666},
+	{"vmctl", {Qvmctl}, 0, 0666},
 	{"drivers", {Qdrivers}, 0, 0444},
 	{"hostowner", {Qhostowner}, 0, 0644},
 	{"keyboard", {Qkeyboard}, 0, 0666},
@@ -1012,6 +1014,9 @@ static long conswrite(struct chan *c, void *va, long n, int64_t offset)
 			kstrdup(&sysname, buf);
 			break;
 #endif
+		case Qvmctl:
+			memmove(v, a, sizeof(v));
+			break;
 		case Qsysctl:
 			//if (!iseve()) error(Eperm);
 			cb = parsecmd(a, n);
