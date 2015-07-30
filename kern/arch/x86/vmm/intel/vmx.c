@@ -93,8 +93,8 @@
  * We divide this into two things: vmm_proc_init and vm_run.
  * Currently, on Intel, vmm_proc_init does nothing.
  *
- * vm_run is really complicated. It is called with a coreid, rip, rsp,
- * cr3, and flags.  On intel, it calls vmx_launch. vmx_launch is set
+ * vm_run is really complicated. It is called with a coreid, and
+ * vmctl struct. On intel, it calls vmx_launch. vmx_launch is set
  * up for a few test cases. If rip is 1, it sets the guest rip to
  * a function which will deref 0 and should exit with failure 2. If rip is 0,
  * it calls an infinite loop in the guest.
@@ -1799,7 +1799,7 @@ static int vmx_handle_nmi_exception(struct vmx_vcpu *vcpu) {
  * vmx_launch - the main loop for a VMX Dune process
  * @conf: the launch configuration
  */
-int vmx_launch(uint64_t rip, uint64_t rsp, uint64_t cr3) {
+int vmx_launch(struct vmctl *v) {
 	int ret;
 	struct vmx_vcpu *vcpu;
 	int errors = 0;
@@ -1818,14 +1818,25 @@ int vmx_launch(uint64_t rip, uint64_t rsp, uint64_t cr3) {
 	 * core is the KERN_GS_BASE). */
 	rdmsrl(MSR_KERNEL_GS_BASE, vcpu->msr_autoload.host[0].value);
 	/* if cr3 is set, means 'set everything', else means 'start where you left off' */
-	if (cr3) {
-		vmx_get_cpu(vcpu);
-		vmcs_writel(GUEST_RIP, rip);
-		vmcs_writel(GUEST_RSP, rsp);
-		vmcs_writel(GUEST_CR3, cr3);
-		vmx_put_cpu(vcpu);
+	vmx_get_cpu(vcpu);
+	switch(v->command) {
+	case REG_ALL:
+		// fallthrough
+		vcpu->regs = v->regs;
+	case REG_RSP_RIP_CR3:
+		vmcs_writel(GUEST_RSP, v->regs.tf_rsp);
+		vmcs_writel(GUEST_CR3, v->cr3);
+		// fallthrough
+	case REG_RIP:
+		vmcs_writel(GUEST_RIP, v->regs.tf_rip);
+		break;
+	case RESUME:
+		break;
+	default: 
+		error("Bad command in vmx_launch");
+		break;
 	}
-
+	vmx_put_cpu(vcpu);
 	vcpu->ret_code = -1;
 
 	while (1) {
