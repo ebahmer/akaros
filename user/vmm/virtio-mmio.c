@@ -333,6 +333,7 @@ void virtio_mmio(struct vmctl *v)
 {
 	// All virtio accesses seem to be 32 bits.
 	uint32_t val;
+	DPRINTF("v is %p\n", v);
 
 	// Duh, which way did he go George? Which way did he go? 
 	// First hit on Google gets you there!
@@ -342,6 +343,7 @@ void virtio_mmio(struct vmctl *v)
 	// we don't have to find the source address in registers,
 	// only the register holding or receiving the value.
 	uint64_t gpa = v->gpa;
+	DPRINTF("gpa is %p\n", gpa);
 
 	// To find out what to do, we have to look at
 	// RIP. Technically, we should read RIP, walk the page tables
@@ -349,8 +351,11 @@ void virtio_mmio(struct vmctl *v)
 	// we take a shortcut for now: read the low 30 bits and use
 	// that as the kernel PA, or our VA, and see what's
 	// there. Hokey. Works.
-	void *kva = (void *)(v->regs.tf_rip & 0x3ffffffff);
+	void *kva = (void *)(v->regs.tf_rip & 0x3fffffff);
+	DPRINTF("kva is %p\n", kva);
+
 	uint16_t ins = *(uint16_t *)kva;
+	DPRINTF("ins is %04x\n", ins);
 	
 	/* this is really primitive for now. We're avoiding full
 	 * instruction emulation, because Linux nicely tends to
@@ -361,9 +366,11 @@ void virtio_mmio(struct vmctl *v)
 	 * always make it harder.
 	 */
 	switch(ins) {
-	case 0x8b10: // mov (%rax), %edx
+	case 0x108b: // mov (%rax), %edx
 		v->regs.tf_rdx = virtio_mmio_read(gpa);
+		v->regs.tf_rip += 2;
 		DPRINTF("Read %p: Set rdx to %p\n", gpa, v->regs.tf_rdx);
+		break;
 	default:
 		DPRINTF("What to do, what do do?\n");
 	}

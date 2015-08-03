@@ -1593,7 +1593,10 @@ static int vmx_handle_ept_violation(struct vmx_vcpu *vcpu, struct vmctl *v) {
 		vmx_dump_cpu(vcpu);
 	}
 
-	return ret;
+	/* we let the vmm handle the failure cases. So return
+	 * the VMX exit violation, not what handle_page_fault returned.
+	 */
+	return EXIT_REASON_EPT_VIOLATION;
 }
 
 static void vmx_handle_cpuid(struct vmx_vcpu *vcpu) {
@@ -1660,7 +1663,7 @@ int vmx_launch(struct vmctl *v) {
 		vmcs_writel(GUEST_CR3, v->cr3);
 		// fallthrough
 	case REG_RIP:
-		printk("REG_RIP\n");
+		printk("REG_RIP %p\n", v->regs.tf_rip);
 		vmcs_writel(GUEST_RIP, v->regs.tf_rip);
 		break;
 	case RESUME:
@@ -1757,8 +1760,8 @@ int vmx_launch(struct vmctl *v) {
 		}
 	}
 
-	printd("RETURN. ip %016lx sp %016lx\n",
-	       vcpu->regs.tf_rip, vcpu->regs.tf_rsp);
+	printk("RETURN. ip %016lx sp %016lx, shutdown 0x%lx ret 0x%lx\n",
+	       vcpu->regs.tf_rip, vcpu->regs.tf_rsp, vcpu->shutdown, vcpu->shutdown);
 	v->regs = vcpu->regs;
 	v->shutdown = vcpu->shutdown;
 	v->ret_code = vcpu->ret_code;

@@ -332,7 +332,7 @@ int main(int argc, char **argv)
 	if (ret != sizeof(vmctl)) {
 		perror(cmd);
 	}
-	vmctl.command = RESUME;
+	vmctl.command = REG_RIP;
 	while (1) {
 		void showstatus(FILE *f, struct vmctl *v);
 		int c;
@@ -344,11 +344,11 @@ int main(int argc, char **argv)
 		if (ret != sizeof(vmctl)) {
 			perror(cmd);
 		}
-		printf("RIP %p\n", vmctl.regs.tf_rip);
+		printf("RIP %p, shutdown 0x%x\n", vmctl.regs.tf_rip, vmctl.shutdown);
 		showstatus(stdout, &vmctl);
 		// this will be in a function, someday.
 		// A rough check: is the GPA 
-		if ((vmctl.shutdown == 0x48/*EXIT_REASON_EPT_VIOLATION*/) && (vmctl.gpa == virtiobase)) {
+		if ((vmctl.shutdown == 5/*EXIT_REASON_EPT_VIOLATION*/) && (vmctl.gpa == virtiobase)) {
 			virtio_mmio(&vmctl);
 		}
 	}
