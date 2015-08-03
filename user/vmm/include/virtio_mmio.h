@@ -129,13 +129,38 @@
  * the per-driver configuration space - Read Write */
 #define VIRTIO_MMIO_CONFIG		0x100
 
-
-
 /*
  * Interrupt flags (re: interrupt status & acknowledge registers)
  */
 
 #define VIRTIO_MMIO_INT_VRING		(1 << 0)
 #define VIRTIO_MMIO_INT_CONFIG		(1 << 1)
+
+struct vqdev {
+	/* Set up usually as a static initializer */
+	char *name;
+	uint32_t dev; // e.g. VIRTIO_ID_CONSOLE);
+	int qnum; // e.g. 0 or 1 for the console;
+	void (*f)(void *arg); // Start this as a thread when a matching virtio is discovered.
+	void *arg;
+	uint32_t features;
+	/* filled in by virtio probing. */
+	uint64_t pfn;
+	uint32_t isr; // not used yet but ...
+	uint32_t status;
+	void *virtio;
+};
+
+/* This struct is passed to a virtio thread when it is started. It includes
+ * needed info and the vqdev arg;
+ */
+struct virtio_threadarg {
+	void *arg;
+	struct vqdev *dev;
+};
+
+void dumpvirtio_mmio(FILE *f, void *v);
+void register_virtio_mmio(struct vqdev *v, int ndev, uint64_t virtio_base);
+void virtio_mmio(struct vmctl *v);
 
 #endif

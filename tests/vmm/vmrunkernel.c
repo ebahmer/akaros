@@ -35,10 +35,11 @@ unsigned long long *p512, *p1, *p2m;
 
 pthread_t *my_threads;
 void **my_retvals;
-int nr_threads = 2;
+int nr_threads = 3;
 char *line, *consline, *outline;
 struct scatterlist iov[32];
 unsigned int inlen, outlen, conslen;
+int debug = 1;
 /* unlike Linux, this shared struct is for both host and guest. */
 //	struct virtqueue *constoguest = 
 //		vring_new_virtqueue(0, 512, 8192, 0, inpages, NULL, NULL, "test");
@@ -46,54 +47,69 @@ volatile int gaveit = 0, gotitback = 0;
 struct virtqueue *guesttocons;
 struct scatterlist out[] = { {NULL, sizeof(outline)}, };
 struct scatterlist in[] = { {NULL, sizeof(line)}, };
+uint64_t virtio_mmio_base = 0x100000000;
 
-static inline uint32_t read32(const volatile void *addr)
+void consout(void *arg)
 {
-	return *(const volatile uint32_t *)addr;
+	struct virtio_threadarg *a = arg;
+	void *v = a->dev->virtio;
+	fprintf(stderr, "talk thread ..\n");
+	uint16_t head;
+	uint32_t vv;
+	int i;
+	int num;
+	printf("Sleep 15 seconds\n");
+	uthread_sleep(15);
+	printf("----------------------- TT a %p\n", a);
+	printf("talk thread ttargs %x v %x\n", a, v);
+	
+	if (debug) printf("Spin on console being read, print num queues, halt\n");
+	while ((vv = read32(v+VIRTIO_MMIO_DRIVER_FEATURES)) == 0) {
+		printf("no ready ... \n");
+		if (debug) {
+			dumpvirtio_mmio(stdout, v);
+		}
+		printf("sleep 1 second\n");
+		uthread_sleep(1);
+	}
+	if (debug)printf("vv %x, set selector %x\n", vv, read32(v + VIRTIO_MMIO_DRIVER_FEATURES_SEL));
+	if (debug) printf("loop forever");
+	while (! quit)
+		;
+	for(num = 0;;num++) {
+		/* host: use any buffers we should have been sent. */
+		head = wait_for_vq_desc(guesttocons, iov, &outlen, &inlen);
+		if (debug)
+			printf("vq desc head %d, gaveit %d gotitback %d\n", head, gaveit, gotitback);
+		for(i = 0; debug && i < outlen + inlen; i++)
+			printf("v[%d/%d] v %p len %d\n", i, outlen + inlen, iov[i].v, iov[i].length);
+		/* host: if we got an output buffer, just output it. */
+		for(i = 0; i < outlen; i++) {
+			num++;
+			printf("Host:%s:\n", (char *)iov[i].v);
+		}
+		
+		if (debug)
+			printf("outlen is %d; inlen is %d\n", outlen, inlen);
+		/* host: fill in the writeable buffers. */
+		/* why we're getting these I don't know. */
+		for (i = outlen; i < outlen + inlen; i++) {
+			if (debug) fprintf(stderr, "send back empty writeable");
+			iov[i].length = 0;
+		}
+		if (debug) printf("call add_used\n");
+		/* host: now ack that we used them all. */
+		add_used(guesttocons, head, outlen+inlen);
+		if (debug) printf("DONE call add_used\n");
+	}
+	fprintf(stderr, "All done\n");
 }
 
-static inline void write32(volatile void *addr, uint32_t value)
+void consin(void *arg)
 {
-	*(volatile uint32_t *)addr = value;
-}
 
-void dumpvirtio_mmio(FILE *f, void *v)
-{
-	fprintf(f, "VIRTIO_MMIO_MAGIC_VALUE: 0x%x\n", read32(v+VIRTIO_MMIO_MAGIC_VALUE));
-	fprintf(f, "VIRTIO_MMIO_VERSION: 0x%x\n", read32(v+VIRTIO_MMIO_VERSION));
-	fprintf(f, "VIRTIO_MMIO_DEVICE_ID: 0x%x\n", read32(v+VIRTIO_MMIO_DEVICE_ID));
-	fprintf(f, "VIRTIO_MMIO_VENDOR_ID: 0x%x\n", read32(v+VIRTIO_MMIO_VENDOR_ID));
-	fprintf(f, "VIRTIO_MMIO_DEVICE_FEATURES: 0x%x\n", read32(v+VIRTIO_MMIO_DEVICE_FEATURES));
-	fprintf(f, "VIRTIO_MMIO_DEVICE_FEATURES_SEL: 0x%x\n", read32(v+VIRTIO_MMIO_DEVICE_FEATURES_SEL));
-	fprintf(f, "VIRTIO_MMIO_DRIVER_FEATURES: 0x%x\n", read32(v+VIRTIO_MMIO_DRIVER_FEATURES));
-	fprintf(f, "VIRTIO_MMIO_DRIVER_FEATURES_SEL: 0x%x\n", read32(v+VIRTIO_MMIO_DRIVER_FEATURES_SEL));
-	fprintf(f, "VIRTIO_MMIO_GUEST_PAGE_SIZE: 0x%x\n", read32(v+VIRTIO_MMIO_GUEST_PAGE_SIZE));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_SEL: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_SEL));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_NUM_MAX: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_NUM_MAX));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_NUM: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_NUM));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_ALIGN: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_ALIGN));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_PFN: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_PFN));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_READY: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_READY));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_NOTIFY: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_NOTIFY));
-	fprintf(f, "VIRTIO_MMIO_INTERRUPT_STATUS: 0x%x\n", read32(v+VIRTIO_MMIO_INTERRUPT_STATUS));
-	fprintf(f, "VIRTIO_MMIO_INTERRUPT_ACK: 0x%x\n", read32(v+VIRTIO_MMIO_INTERRUPT_ACK));
-	fprintf(f, "VIRTIO_MMIO_STATUS: 0x%x\n", read32(v+VIRTIO_MMIO_STATUS));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_DESC_LOW: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_DESC_LOW));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_DESC_HIGH: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_DESC_HIGH));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_AVAIL_LOW: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_AVAIL_LOW));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_AVAIL_HIGH: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_AVAIL_HIGH));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_USED_LOW: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_USED_LOW));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_USED_HIGH: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_USED_HIGH));
-	fprintf(f, "VIRTIO_MMIO_CONFIG_GENERATION: 0x%x\n", read32(v+VIRTIO_MMIO_CONFIG_GENERATION));
-}
-int debug = 1;
-
-struct ttargs {
-	void *virtio;
-};
-
-void *talk_thread(void *arg)
-{
+	fprintf(stderr, "consinput; nothing to do\n");
+#if 0
 	struct ttargs *a = arg;
 	void *v = a->virtio;
 	fprintf(stderr, "talk thread ..\n");
@@ -101,7 +117,6 @@ void *talk_thread(void *arg)
 	uint32_t vv;
 	int i;
 	int num;
-	return NULL;
 	printf("Sleep 15 seconds\n");
 	uthread_sleep(15);
 	printf("----------------------- TT a %p\n", a);
@@ -155,12 +170,15 @@ void *talk_thread(void *arg)
 		add_used(guesttocons, head, outlen+inlen);
 		if (debug) printf("DONE call add_used\n");
 	}
+#endif
 	fprintf(stderr, "All done\n");
-	return NULL;
+
 }
 
-struct ttargs t;
-	
+struct vqdev vqs[] = {
+	{"consout", VIRTIO_ID_CONSOLE, 0, consout, (void *)0},
+	{"consin", VIRTIO_ID_CONSOLE, 1, consin, (void *)0},
+};
 
 int main(int argc, char **argv)
 {
@@ -267,8 +285,6 @@ int main(int argc, char **argv)
 		}
 	}
 
-	//t.virtio = (void *)VIRTIOBASE;
-
 	ret = syscall(33, 1);
 	if (ret < 0) {
 		perror("vm setup");
@@ -306,12 +322,12 @@ int main(int argc, char **argv)
 	vmctl.regs.tf_rip = entry;
 	vmctl.regs.tf_rsp = (uint64_t) &stack[1024];
 	if (mcp) {
-		if (pthread_create(&my_threads[0], NULL, &talk_thread, &t))
-			perror("pth_create failed");
+		/* set up virtio bits, which depend on threads being enabled. */
+		register_virtio_mmio(vqs, 2, virtio_mmio_base);
 	}
 	printf("threads started\n");
 	printf("Writing command :%s:\n", cmd);
-	// sys_getpcoreid
+
 	ret = write(fd, &vmctl, sizeof(vmctl));
 	if (ret != sizeof(vmctl)) {
 		perror(cmd);
@@ -332,10 +348,8 @@ int main(int argc, char **argv)
 		showstatus(stdout, &vmctl);
 		// this will be in a function, someday.
 		// A rough check: is the GPA 
-		if (vmctl.gpa == virtiobase) {
-			int virtio(struct vmctl *v, uint64_t);
-			if (virtio(&vmctl, virtiobase))
-				break;
+		if ((vmctl.shutdown == 0x48/*EXIT_REASON_EPT_VIOLATION*/) && (vmctl.gpa == virtiobase)) {
+			virtio_mmio(&vmctl);
 		}
 	}
 
