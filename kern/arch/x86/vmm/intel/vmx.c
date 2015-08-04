@@ -1657,6 +1657,9 @@ int vmx_launch(struct vmctl *v) {
 		printk("REG_ALL\n");
 		// fallthrough
 		vcpu->regs = v->regs;
+		vmcs_writel(GUEST_RSP, v->regs.tf_rsp);
+		vmcs_writel(GUEST_RIP, v->regs.tf_rip);
+		break;
 	case REG_RSP_RIP_CR3:
 		printk("REG_RSP_RIP_CR3\n");
 		vmcs_writel(GUEST_RSP, v->regs.tf_rsp);
@@ -1673,6 +1676,7 @@ int vmx_launch(struct vmctl *v) {
 		error("Bad command in vmx_launch");
 		break;
 	}
+	vcpu->shutdown = 0;
 	vmx_put_cpu(vcpu);
 	vcpu->ret_code = -1;
 

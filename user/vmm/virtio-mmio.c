@@ -52,6 +52,8 @@ typedef struct {
 	int state; // not used yet. */
 	uint64_t bar;
 	int qsel; // queue we are on.
+	int pagesize;
+	int page_shift;
 	struct vqdev *vqs;
 	int ndevs;
 } mmiostate;
@@ -213,22 +215,13 @@ static uint32_t virtio_mmio_read(uint64_t gpa)
 
 static void virtio_mmio_write(uint64_t gpa, uint32_t val)
 {
-#if 0
-    VirtIOMMIOProxy *proxy = (VirtIOMMIOProxy *)opaque;
-    VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);
-
-    DPRINTF("virtio_mmio_write offset 0x%x value 0x%" PRIx64 "\n",
-            (int)offset, value);
-
-    if (!vdev) {
-        /* If no backend is present, we just make all registers
-         * write-ignored. This allows us to provide transports with
-         * no backend plugged in.
-         */
-        return;
-    }
+	unsigned int offset = gpa - mmio.bar;
+	
+	DPRINTF("virtio_mmio_read offset 0x%x\n", (int)offset);
 
     if (offset >= VIRTIO_MMIO_CONFIG) {
+	    fprintf(stderr, "Whoa. Writing past mmio config space? What gives?\n");
+#if 0
         offset -= VIRTIO_MMIO_CONFIG;
         switch (size) {
         case 1:
@@ -243,13 +236,17 @@ static void virtio_mmio_write(uint64_t gpa, uint32_t val)
         default:
             abort();
         }
+#endif
         return;
     }
+#if 0
     if (size != 4) {
         DPRINTF("wrong size access to register!\n");
         return;
     }
+#endif
     switch (offset) {
+#if 0
     case VIRTIO_MMIO_HOSTFEATURESSEL:
         proxy->host_features_sel = value;
         break;
@@ -261,14 +258,12 @@ static void virtio_mmio_write(uint64_t gpa, uint32_t val)
     case VIRTIO_MMIO_GUESTFEATURESSEL:
         proxy->guest_features_sel = value;
         break;
-    case VIRTIO_MMIO_GUESTPAGESIZE:
-        proxy->guest_page_shift = ctz32(value);
-        if (proxy->guest_page_shift > 31) {
-            proxy->guest_page_shift = 0;
-        }
-        DPRINTF("guest page size %" PRIx64 " shift %d\n", value,
-                proxy->guest_page_shift);
+#endif
+    case VIRTIO_MMIO_GUEST_PAGE_SIZE:
+	    mmio.pagesize = val;
+	    DPRINTF("guest page size %d bytes\n", mmio.pagesize);
         break;
+#if 0
     case VIRTIO_MMIO_QUEUESEL:
         if (value < VIRTIO_QUEUE_MAX) {
             vdev->queue_sel = value;
@@ -313,20 +308,21 @@ static void virtio_mmio_write(uint64_t gpa, uint32_t val)
             virtio_reset(vdev);
         }
         break;
-    case VIRTIO_MMIO_MAGIC:
+#endif
+    case VIRTIO_MMIO_MAGIC_VALUE:
     case VIRTIO_MMIO_VERSION:
-    case VIRTIO_MMIO_DEVICEID:
-    case VIRTIO_MMIO_VENDORID:
-    case VIRTIO_MMIO_HOSTFEATURES:
-    case VIRTIO_MMIO_QUEUENUMMAX:
-    case VIRTIO_MMIO_INTERRUPTSTATUS:
+    case VIRTIO_MMIO_DEVICE_ID:
+    case VIRTIO_MMIO_VENDOR_ID:
+//    case VIRTIO_MMIO_HOSTFEATURES:
+    case VIRTIO_MMIO_QUEUE_NUM_MAX:
+    case VIRTIO_MMIO_INTERRUPT_STATUS:
         DPRINTF("write to readonly register\n");
         break;
 
     default:
         DPRINTF("bad register offset\n");
     }
-#endif
+
 }
 
 void virtio_mmio(struct vmctl *v)
@@ -370,6 +366,26 @@ void virtio_mmio(struct vmctl *v)
 		v->regs.tf_rdx = virtio_mmio_read(gpa);
 		v->regs.tf_rip += 2;
 		DPRINTF("Read %p: Set rdx to %p\n", gpa, v->regs.tf_rdx);
+		break;
+	// Our primitive approach wins big here.
+	// We don't have to decode the register or the offset used
+	// in the computation; that was done by the CPU and is the gpa.
+	// All we need to know is which destination or source register it is.
+	case 0x518b: // mov offset(%rcx), %edx
+		v->regs.tf_rdx = virtio_mmio_read(gpa);
+		v->regs.tf_rip += 3;
+		DPRINTF("Read %p: Set rdx to %p\n", gpa, v->regs.tf_rdx);
+		break;
+	case 0x408b: // mov offset(%rcx), %edx
+		v->regs.tf_rax = virtio_mmio_read(gpa);
+		v->regs.tf_rip += 3;
+		DPRINTF("Read %p: Set rax to %p\n", gpa, v->regs.tf_rdx);
+		break;
+		/* write */
+	case 0x4289: // mov %eax, offset(%rdx)
+		virtio_mmio_write(gpa, v->regs.tf_rax);
+		v->regs.tf_rip += 3;
+		DPRINTF("Write %p: mov eax to %p\n", v->regs.tf_rax, gpa);
 		break;
 	default:
 		DPRINTF("What to do, what do do?\n");
