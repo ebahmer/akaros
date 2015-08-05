@@ -37,6 +37,7 @@
 #include <vmm/virtio.h>
 #include <vmm/virtio_mmio.h>
 #include <vmm/virtio_ids.h>
+#include <vmm/virtio_config.h>
 
 int debug_virtio_mmio = 1;
 #define DPRINTF(fmt, ...) \
@@ -51,9 +52,12 @@ int debug_virtio_mmio = 1;
 typedef struct {
 	int state; // not used yet. */
 	uint64_t bar;
+	uint32_t status;
 	int qsel; // queue we are on.
 	int pagesize;
 	int page_shift;
+	int host_features_sel;
+	int guest_features_sel;
 	struct vqdev *vqs;
 	int ndevs;
 } mmiostate;
@@ -82,34 +86,35 @@ static void setupconsole(void *v)
 #endif
 
 
-void dumpvirtio_mmio(FILE *f, void *v)
+static uint32_t virtio_mmio_read(uint64_t gpa);
+void dumpvirtio_mmio(FILE *f, uint64_t v)
 {
-	fprintf(f, "VIRTIO_MMIO_MAGIC_VALUE: 0x%x\n", read32(v+VIRTIO_MMIO_MAGIC_VALUE));
-	fprintf(f, "VIRTIO_MMIO_VERSION: 0x%x\n", read32(v+VIRTIO_MMIO_VERSION));
-	fprintf(f, "VIRTIO_MMIO_DEVICE_ID: 0x%x\n", read32(v+VIRTIO_MMIO_DEVICE_ID));
-	fprintf(f, "VIRTIO_MMIO_VENDOR_ID: 0x%x\n", read32(v+VIRTIO_MMIO_VENDOR_ID));
-	fprintf(f, "VIRTIO_MMIO_DEVICE_FEATURES: 0x%x\n", read32(v+VIRTIO_MMIO_DEVICE_FEATURES));
-	fprintf(f, "VIRTIO_MMIO_DEVICE_FEATURES_SEL: 0x%x\n", read32(v+VIRTIO_MMIO_DEVICE_FEATURES_SEL));
-	fprintf(f, "VIRTIO_MMIO_DRIVER_FEATURES: 0x%x\n", read32(v+VIRTIO_MMIO_DRIVER_FEATURES));
-	fprintf(f, "VIRTIO_MMIO_DRIVER_FEATURES_SEL: 0x%x\n", read32(v+VIRTIO_MMIO_DRIVER_FEATURES_SEL));
-	fprintf(f, "VIRTIO_MMIO_GUEST_PAGE_SIZE: 0x%x\n", read32(v+VIRTIO_MMIO_GUEST_PAGE_SIZE));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_SEL: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_SEL));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_NUM_MAX: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_NUM_MAX));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_NUM: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_NUM));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_ALIGN: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_ALIGN));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_PFN: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_PFN));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_READY: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_READY));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_NOTIFY: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_NOTIFY));
-	fprintf(f, "VIRTIO_MMIO_INTERRUPT_STATUS: 0x%x\n", read32(v+VIRTIO_MMIO_INTERRUPT_STATUS));
-	fprintf(f, "VIRTIO_MMIO_INTERRUPT_ACK: 0x%x\n", read32(v+VIRTIO_MMIO_INTERRUPT_ACK));
-	fprintf(f, "VIRTIO_MMIO_STATUS: 0x%x\n", read32(v+VIRTIO_MMIO_STATUS));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_DESC_LOW: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_DESC_LOW));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_DESC_HIGH: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_DESC_HIGH));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_AVAIL_LOW: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_AVAIL_LOW));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_AVAIL_HIGH: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_AVAIL_HIGH));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_USED_LOW: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_USED_LOW));
-	fprintf(f, "VIRTIO_MMIO_QUEUE_USED_HIGH: 0x%x\n", read32(v+VIRTIO_MMIO_QUEUE_USED_HIGH));
-	fprintf(f, "VIRTIO_MMIO_CONFIG_GENERATION: 0x%x\n", read32(v+VIRTIO_MMIO_CONFIG_GENERATION));
+	fprintf(f, "VIRTIO_MMIO_MAGIC_VALUE: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_MAGIC_VALUE));
+	fprintf(f, "VIRTIO_MMIO_VERSION: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_VERSION));
+	fprintf(f, "VIRTIO_MMIO_DEVICE_ID: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_DEVICE_ID));
+	fprintf(f, "VIRTIO_MMIO_VENDOR_ID: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_VENDOR_ID));
+	fprintf(f, "VIRTIO_MMIO_DEVICE_FEATURES: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_DEVICE_FEATURES));
+	fprintf(f, "VIRTIO_MMIO_DEVICE_FEATURES_SEL: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_DEVICE_FEATURES_SEL));
+	fprintf(f, "VIRTIO_MMIO_DRIVER_FEATURES: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_DRIVER_FEATURES));
+	fprintf(f, "VIRTIO_MMIO_DRIVER_FEATURES_SEL: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_DRIVER_FEATURES_SEL));
+	fprintf(f, "VIRTIO_MMIO_GUEST_PAGE_SIZE: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_GUEST_PAGE_SIZE));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_SEL: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_SEL));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_NUM_MAX: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_NUM_MAX));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_NUM: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_NUM));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_ALIGN: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_ALIGN));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_PFN: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_PFN));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_READY: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_READY));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_NOTIFY: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_NOTIFY));
+	fprintf(f, "VIRTIO_MMIO_INTERRUPT_STATUS: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_INTERRUPT_STATUS));
+	fprintf(f, "VIRTIO_MMIO_INTERRUPT_ACK: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_INTERRUPT_ACK));
+	fprintf(f, "VIRTIO_MMIO_STATUS: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_STATUS));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_DESC_LOW: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_DESC_LOW));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_DESC_HIGH: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_DESC_HIGH));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_AVAIL_LOW: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_AVAIL_LOW));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_AVAIL_HIGH: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_AVAIL_HIGH));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_USED_LOW: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_USED_LOW));
+	fprintf(f, "VIRTIO_MMIO_QUEUE_USED_HIGH: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_QUEUE_USED_HIGH));
+	fprintf(f, "VIRTIO_MMIO_CONFIG_GENERATION: 0x%x\n", virtio_mmio_read(v+VIRTIO_MMIO_CONFIG_GENERATION));
 }
 
 /* We're going to attempt to make mmio stateless, since the real machine is in
@@ -213,11 +218,11 @@ static uint32_t virtio_mmio_read(uint64_t gpa)
     return 0;
 }
 
-static void virtio_mmio_write(uint64_t gpa, uint32_t val)
+static void virtio_mmio_write(uint64_t gpa, uint32_t value)
 {
 	unsigned int offset = gpa - mmio.bar;
 	
-	DPRINTF("virtio_mmio_read offset 0x%x\n", (int)offset);
+	DPRINTF("virtio_mmio_write offset 0x%x\n", (int)offset);
 
     if (offset >= VIRTIO_MMIO_CONFIG) {
 	    fprintf(stderr, "Whoa. Writing past mmio config space? What gives?\n");
@@ -246,13 +251,13 @@ static void virtio_mmio_write(uint64_t gpa, uint32_t val)
     }
 #endif
     switch (offset) {
-#if 0
-    case VIRTIO_MMIO_HOSTFEATURESSEL:
-        proxy->host_features_sel = value;
+    case VIRTIO_MMIO_DEVICE_FEATURES_SEL:
+        mmio.host_features_sel = value;
         break;
+#if 0
     case VIRTIO_MMIO_GUESTFEATURES:
-        if (!proxy->guest_features_sel) {
-            virtio_set_features(vdev, value);
+        if (!mmio.guest_features_sel) {
+            mmio.guest_features_sel = value;
         }
         break;
     case VIRTIO_MMIO_GUESTFEATURESSEL:
@@ -260,7 +265,7 @@ static void virtio_mmio_write(uint64_t gpa, uint32_t val)
         break;
 #endif
     case VIRTIO_MMIO_GUEST_PAGE_SIZE:
-	    mmio.pagesize = val;
+	    mmio.pagesize = value;
 	    DPRINTF("guest page size %d bytes\n", mmio.pagesize);
         break;
 #if 0
@@ -293,22 +298,19 @@ static void virtio_mmio_write(uint64_t gpa, uint32_t val)
         vdev->isr &= ~value;
         virtio_update_irq(vdev);
         break;
+#endif
     case VIRTIO_MMIO_STATUS:
         if (!(value & VIRTIO_CONFIG_S_DRIVER_OK)) {
-            virtio_mmio_stop_ioeventfd(proxy);
+            printf("VIRTIO_MMIO_STATUS write: NOT OK! 0x%x\n", value);
         }
 
-        virtio_set_status(vdev, value & 0xff);
+	mmio.status |= value & 0xff;
 
         if (value & VIRTIO_CONFIG_S_DRIVER_OK) {
-            virtio_mmio_start_ioeventfd(proxy);
+            printf("VIRTIO_MMIO_STATUS write: OK! 0x%x\n", value);
         }
 
-        if (vdev->status == 0) {
-            virtio_reset(vdev);
-        }
         break;
-#endif
     case VIRTIO_MMIO_MAGIC_VALUE:
     case VIRTIO_MMIO_VERSION:
     case VIRTIO_MMIO_DEVICE_ID:
@@ -320,16 +322,23 @@ static void virtio_mmio_write(uint64_t gpa, uint32_t val)
         break;
 
     default:
-        DPRINTF("bad register offset\n");
+        DPRINTF("bad register offset 0x%x\n", offset);
     }
 
 }
 
+static char *modrmreg[] = {"rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi"};
+
 void virtio_mmio(struct vmctl *v)
 {
+	int advance = 3; /* how much to move the IP forward at the end. 3 is a good default. */
 	// All virtio accesses seem to be 32 bits.
-	uint32_t val;
+	// valp points to a place to get or put the value. 
+	uint32_t *valp;
 	DPRINTF("v is %p\n", v);
+	// regp points to the register in hw_trapframe from which
+	// to load or store a result.
+	uint64_t *regp;
 
 	// Duh, which way did he go George? Which way did he go? 
 	// First hit on Google gets you there!
@@ -347,47 +356,75 @@ void virtio_mmio(struct vmctl *v)
 	// we take a shortcut for now: read the low 30 bits and use
 	// that as the kernel PA, or our VA, and see what's
 	// there. Hokey. Works.
-	void *kva = (void *)(v->regs.tf_rip & 0x3fffffff);
+	uint8_t *kva = (void *)(v->regs.tf_rip & 0x3fffffff);
 	DPRINTF("kva is %p\n", kva);
+
+	if ((kva[0] != 0x8b) && (kva[0] != 0x89)) {
+		fprintf(stderr, "%s: can't handle instruction 0x%x\n", kva[0]);
+		return;
+	}
 
 	uint16_t ins = *(uint16_t *)kva;
 	DPRINTF("ins is %04x\n", ins);
 	
-	/* this is really primitive for now. We're avoiding full
-	 * instruction emulation, because Linux nicely tends to
-	 * concentrate the access in a few basic macros that in turn
-	 * only use one or two instructions. One reason: you can only
-	 * really do 64-bit loads via (%rax). The suckiness of the ISA
-	 * works in our favor. Let's see how this works.  We can
-	 * always make it harder.
-	 */
-	switch(ins) {
-	case 0x108b: // mov (%rax), %edx
-		v->regs.tf_rdx = virtio_mmio_read(gpa);
-		v->regs.tf_rip += 2;
-		DPRINTF("Read %p: Set rdx to %p\n", gpa, v->regs.tf_rdx);
-		break;
+	int write = (kva[0] == 0x8b) ? 0 : 1;
+	if (write)
+		valp = (uint32_t *)gpa;
+
+	int mod = kva[1]>>6;
+	switch (mod) {
+		case 0: 
+		case 3:
+			advance = 2;
+			break;
+		case 1:
+			advance = 3;
+			break;
+		case 2: 
+			advance = 6;
+			break;
+	}
+	/* the dreaded mod/rm byte. */
+	int destreg = (ins>>11) & 7;
 	// Our primitive approach wins big here.
 	// We don't have to decode the register or the offset used
 	// in the computation; that was done by the CPU and is the gpa.
 	// All we need to know is which destination or source register it is.
-	case 0x518b: // mov offset(%rcx), %edx
-		v->regs.tf_rdx = virtio_mmio_read(gpa);
-		v->regs.tf_rip += 3;
-		DPRINTF("Read %p: Set rdx to %p\n", gpa, v->regs.tf_rdx);
+	switch (destreg) {
+	case 0:
+		regp = &v->regs.tf_rax;
 		break;
-	case 0x408b: // mov offset(%rcx), %edx
-		v->regs.tf_rax = virtio_mmio_read(gpa);
-		v->regs.tf_rip += 3;
-		DPRINTF("Read %p: Set rax to %p\n", gpa, v->regs.tf_rdx);
+	case 1:
+		regp = &v->regs.tf_rcx;
 		break;
-		/* write */
-	case 0x4289: // mov %eax, offset(%rdx)
-		virtio_mmio_write(gpa, v->regs.tf_rax);
-		v->regs.tf_rip += 3;
-		DPRINTF("Write %p: mov eax to %p\n", v->regs.tf_rax, gpa);
+	case 2:
+		regp = &v->regs.tf_rdx;
 		break;
-	default:
-		DPRINTF("What to do, what do do?\n");
+	case 3:
+		regp = &v->regs.tf_rbx;
+		break;
+	case 4:
+		regp = &v->regs.tf_rsp; // uh, right.
+		break;
+	case 5:
+		regp = &v->regs.tf_rbp;
+		break;
+	case 6:
+		regp = &v->regs.tf_rsi;
+		break;
+	case 7:
+		regp = &v->regs.tf_rdi;
+		break;
 	}
+
+	if (write) {
+		virtio_mmio_write(gpa, *regp);
+		DPRINTF("Write: mov %s to from @%p val %p\n", modrmreg[destreg], gpa, *regp);
+	} else {
+		*regp = virtio_mmio_read(gpa);
+		DPRINTF("Read: Set %s from @%p to %p\n", modrmreg[destreg], gpa, *regp);
+	}
+
+	DPRINTF("Advance rip by %d bytes to %p\n", advance, v->regs.tf_rip);
+	v->regs.tf_rip += advance;
 }

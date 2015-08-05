@@ -44,7 +44,6 @@ int debug = 1;
 //	struct virtqueue *constoguest = 
 //		vring_new_virtqueue(0, 512, 8192, 0, inpages, NULL, NULL, "test");
 volatile int gaveit = 0, gotitback = 0;
-struct virtqueue *guesttocons;
 struct scatterlist out[] = { {NULL, sizeof(outline)}, };
 struct scatterlist in[] = { {NULL, sizeof(line)}, };
 uint64_t virtio_mmio_base = 0x100000000;
@@ -52,7 +51,7 @@ uint64_t virtio_mmio_base = 0x100000000;
 void consout(void *arg)
 {
 	struct virtio_threadarg *a = arg;
-	void *v = a->dev->virtio;
+	struct virtqueue *v = a->dev->virtio;
 	fprintf(stderr, "talk thread ..\n");
 	uint16_t head;
 	uint32_t vv;
@@ -63,22 +62,9 @@ void consout(void *arg)
 	printf("----------------------- TT a %p\n", a);
 	printf("talk thread ttargs %x v %x\n", a, v);
 	
-	if (debug) printf("Spin on console being read, print num queues, halt\n");
-	while ((vv = read32(v+VIRTIO_MMIO_DRIVER_FEATURES)) == 0) {
-		printf("no ready ... \n");
-		if (debug) {
-			dumpvirtio_mmio(stdout, v);
-		}
-		printf("sleep 1 second\n");
-		uthread_sleep(1);
-	}
-	if (debug)printf("vv %x, set selector %x\n", vv, read32(v + VIRTIO_MMIO_DRIVER_FEATURES_SEL));
-	if (debug) printf("loop forever");
-	while (! quit)
-		;
 	for(num = 0;;num++) {
 		/* host: use any buffers we should have been sent. */
-		head = wait_for_vq_desc(guesttocons, iov, &outlen, &inlen);
+		head = wait_for_vq_desc(v, iov, &outlen, &inlen);
 		if (debug)
 			printf("vq desc head %d, gaveit %d gotitback %d\n", head, gaveit, gotitback);
 		for(i = 0; debug && i < outlen + inlen; i++)
@@ -99,7 +85,7 @@ void consout(void *arg)
 		}
 		if (debug) printf("call add_used\n");
 		/* host: now ack that we used them all. */
-		add_used(guesttocons, head, outlen+inlen);
+		add_used(v, head, outlen+inlen);
 		if (debug) printf("DONE call add_used\n");
 	}
 	fprintf(stderr, "All done\n");

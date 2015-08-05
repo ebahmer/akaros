@@ -159,7 +159,7 @@ struct virtio_threadarg {
 	struct vqdev *dev;
 };
 
-void dumpvirtio_mmio(FILE *f, void *v);
+void dumpvirtio_mmio(FILE *f, uint64_t gpa);
 void register_virtio_mmio(struct vqdev *v, int ndev, uint64_t virtio_base);
 void virtio_mmio(struct vmctl *v);
 
