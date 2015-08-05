@@ -141,8 +141,9 @@ struct vqdev {
 	char *name;
 	uint32_t dev; // e.g. VIRTIO_ID_CONSOLE);
 	int qnum; // e.g. 0 or 1 for the console;
-	void (*f)(void *arg); // Start this as a thread when a matching virtio is discovered.
+	void *(*f)(void *arg); // Start this as a thread when a matching virtio is discovered.
 	void *arg;
+	pthread_t *thread;
 	uint32_t features;
 	/* filled in by virtio probing. */
 	uint64_t pfn;
@@ -152,15 +153,14 @@ struct vqdev {
 };
 
 /* This struct is passed to a virtio thread when it is started. It includes
- * needed info and the vqdev arg;
+ * needed info and the vqdev arg. This seems overkill but we may need to add to it.
  */
 struct virtio_threadarg {
-	void *arg;
-	struct vqdev *dev;
+	struct vqdev *arg;
 };
 
 void dumpvirtio_mmio(FILE *f, uint64_t gpa);
-void register_virtio_mmio(struct vqdev *v, int ndev, uint64_t virtio_base);
+void register_virtio_mmio(struct vqdev v[], int ndev, uint64_t virtio_base);
 void virtio_mmio(struct vmctl *v);
 
 #endif

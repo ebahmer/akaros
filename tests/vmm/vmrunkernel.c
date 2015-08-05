@@ -33,7 +33,6 @@ uint8_t _kernel[KERNSIZE];
 
 unsigned long long *p512, *p1, *p2m;
 
-pthread_t *my_threads;
 void **my_retvals;
 int nr_threads = 3;
 char *line, *consline, *outline;
@@ -48,10 +47,10 @@ struct scatterlist out[] = { {NULL, sizeof(outline)}, };
 struct scatterlist in[] = { {NULL, sizeof(line)}, };
 uint64_t virtio_mmio_base = 0x100000000;
 
-void consout(void *arg)
+void *consout(void *arg)
 {
 	struct virtio_threadarg *a = arg;
-	struct virtqueue *v = a->dev->virtio;
+	struct virtqueue *v = a->arg->virtio;
 	fprintf(stderr, "talk thread ..\n");
 	uint16_t head;
 	uint32_t vv;
@@ -89,9 +88,10 @@ void consout(void *arg)
 		if (debug) printf("DONE call add_used\n");
 	}
 	fprintf(stderr, "All done\n");
+	return NULL;
 }
 
-void consin(void *arg)
+void *consin(void *arg)
 {
 
 	fprintf(stderr, "consinput; nothing to do\n");
@@ -158,12 +158,12 @@ void consin(void *arg)
 	}
 #endif
 	fprintf(stderr, "All done\n");
-
+	return NULL;
 }
 
 struct vqdev vqs[] = {
-	{"consout", VIRTIO_ID_CONSOLE, 0, consout, (void *)0},
-	{"consin", VIRTIO_ID_CONSOLE, 1, consin, (void *)0},
+	{name: "consin", dev: VIRTIO_ID_CONSOLE, qnum: 2, f: &consin, arg: (void *)0},
+	{name: "consout", dev: VIRTIO_ID_CONSOLE, qnum: 2, f: consout, arg: (void *)0},
 };
 
 int main(int argc, char **argv)
@@ -254,9 +254,8 @@ int main(int argc, char **argv)
 
 	mcp = 1;
 	if (mcp) {
-		my_threads = malloc(sizeof(pthread_t) * nr_threads);
 		my_retvals = malloc(sizeof(void*) * nr_threads);
-		if (!(my_retvals && my_threads))
+		if (!my_retvals)
 			perror("Init threads/malloc");
 
 		pthread_can_vcore_request(FALSE);	/* 2LS won't manage vcores */
@@ -327,7 +326,7 @@ int main(int argc, char **argv)
 		if (c == 'q')
 			break;
 		printf("RIP %p, shutdown 0x%x\n", vmctl.regs.tf_rip, vmctl.shutdown);
-		showstatus(stdout, &vmctl);
+		//showstatus(stdout, &vmctl);
 		// this will be in a function, someday.
 		// A rough check: is the GPA 
 		if ((vmctl.shutdown == 5/*EXIT_REASON_EPT_VIOLATION*/) && ((vmctl.gpa & ~0xfffULL) == virtiobase)) {
@@ -347,12 +346,14 @@ int main(int argc, char **argv)
 	printf("shared is %d, blob is %d\n", shared, *mmap_blob);
 
 	quit = 1;
+	/* later. 
 	for (int i = 0; i < nr_threads-1; i++) {
 		int ret;
 		if (pthread_join(my_threads[i], &my_retvals[i]))
 			perror("pth_join failed");
 		printf("%d %d\n", i, ret);
 	}
+ */
 
 	return 0;
 }
