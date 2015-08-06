@@ -59,33 +59,16 @@ typedef struct {
 	int page_shift;
 	int host_features_sel;
 	int guest_features_sel;
-	struct vqdev *vqs;
-	int ndevs;
+	struct vqdev *vqdev;
 } mmiostate;
 
 static mmiostate mmio;
 
-void register_virtio_mmio(struct vqdev vqs[], int nvq, uint64_t virtio_base)
+void register_virtio_mmio(struct vqdev *vqdev, uint64_t virtio_base)
 {
 	mmio.bar = virtio_base;
-	mmio.vqs = vqs;
-	mmio.ndevs = nvq;
+	mmio.vqdev = vqdev;
 }
-
-#if 0
-static void setupconsole(void *v)
-{
-	// try to make linux happy.
-	// this is not really endian safe but ... well ... WE'RE ON THE SAME MACHINE
-	write32(v+VIRTIO_MMIO_MAGIC_VALUE, ('v' | 'i' << 8 | 'r' << 16 | 't' << 24));
-	// no constant for this is defined anywhere. It's just 1.
-	write32(v+VIRTIO_MMIO_VERSION, 1);
-	write32(v+VIRTIO_MMIO_DEVICE_ID, VIRTIO_ID_CONSOLE);
-	write32(v+VIRTIO_MMIO_QUEUE_NUM_MAX, 1);
-	write32(v+VIRTIO_MMIO_QUEUE_PFN, 0);
-}
-#endif
-
 
 static uint32_t virtio_mmio_read(uint64_t gpa);
 char *virtio_names[] = {
@@ -135,7 +118,7 @@ static uint32_t virtio_mmio_read(uint64_t gpa)
 	 * probe won't complain about the bad magic number, but the
 	 * device ID of zero means no backend will claim it.
 	 */
-	if (mmio.ndevs == 0) {
+	if (mmio.vqdev->numvqs == 0) {
 		switch (offset) {
 		case VIRTIO_MMIO_MAGIC_VALUE:
 			return VIRT_MAGIC;
@@ -180,23 +163,23 @@ static uint32_t virtio_mmio_read(uint64_t gpa)
     case VIRTIO_MMIO_VERSION:
 	    return VIRT_VERSION;
     case VIRTIO_MMIO_DEVICE_ID:
-	    return mmio.vqs[mmio.qsel].dev;
+	    return mmio.vqdev->dev;
     case VIRTIO_MMIO_VENDOR_ID:
 	    return VIRT_VENDOR;
     case VIRTIO_MMIO_DEVICE_FEATURES:
 // ???	    if (proxy->host_features_sel) {
 	    return 0;
 //	    }
-	    return mmio.vqs[mmio.qsel].features;
+	    return mmio.vqdev->features;
     case VIRTIO_MMIO_QUEUE_NUM_MAX:
-	    DPRINTF("For q %d, qnum is %d\n", mmio.qsel, mmio.vqs[mmio.qsel].qnum);
-	    return mmio.vqs[mmio.qsel].qnum;
+	    DPRINTF("For q %d, qnum is %d\n", mmio.qsel, mmio.vqdev->vqs[mmio.qsel].qnum);
+	    return mmio.vqdev->vqs[mmio.qsel].qnum;
     case VIRTIO_MMIO_QUEUE_PFN:
-	    return mmio.vqs[mmio.qsel].pfn;
+	    return mmio.vqdev->vqs[mmio.qsel].pfn;
     case VIRTIO_MMIO_INTERRUPT_STATUS:
-	    return mmio.vqs[mmio.qsel].isr;
+	    return mmio.vqdev->vqs[mmio.qsel].isr;
     case VIRTIO_MMIO_STATUS:
-	    return mmio.vqs[mmio.qsel].status;
+	    return mmio.vqdev->vqs[mmio.qsel].status;
     case VIRTIO_MMIO_DEVICE_FEATURES_SEL:
     case VIRTIO_MMIO_DRIVER_FEATURES:
     case VIRTIO_MMIO_DRIVER_FEATURES_SEL:
@@ -267,7 +250,7 @@ static void virtio_mmio_write(uint64_t gpa, uint32_t value)
         break;
     case VIRTIO_MMIO_QUEUE_SEL:
 	    /* don't check it here. Check it on use. Or maybe check it here. Who knows. */
-	    if (value < mmio.ndevs)
+	    if (value < mmio.vqdev->numvqs)
 		    mmio.qsel = value;
 	    else
 		    mmio.qsel = -1;
@@ -283,15 +266,17 @@ static void virtio_mmio_write(uint64_t gpa, uint32_t value)
         break;
     case VIRTIO_MMIO_QUEUE_PFN:
 	// failure of vision: they used 32 bit numbers. Geez.
-	mmio.vqs[mmio.qsel].pfn = value << mmio.page_shift;
+	mmio.vqdev->vqs[mmio.qsel].pfn = value;
         break;
     case VIRTIO_MMIO_QUEUE_NOTIFY:
-	    if (value < mmio.ndevs) {
+	    if (value < mmio.vqdev->numvqs) {
 		    // let's kick off the thread and see how it goes?
 		    struct virtio_threadarg *va = malloc(sizeof(*va));
-		    va->arg = &mmio.vqs[mmio.qsel];
-		    if (pthread_create(va->arg->thread, NULL, va->arg->f, va)) {
-			    fprintf("pth_create failed for vq %s", va->arg->name);
+		    va->arg = &mmio.vqdev->vqs[mmio.qsel];
+		    va->arg->virtio = (void *)(va->arg->pfn * mmio.pagesize);
+		    fprintf(stderr, "START THE THREAD. pfn is 0x%x, virtio is %p\n", mmio.pagesize, va->arg->virtio);
+		    if (pthread_create(&va->arg->thread, NULL, va->arg->f, va)) {
+			    fprintf(stderr, "pth_create failed for vq %s", va->arg->name);
 				perror("pth_create");
 			}
 	    }

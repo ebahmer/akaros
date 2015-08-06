@@ -161,9 +161,15 @@ void *consin(void *arg)
 	return NULL;
 }
 
-struct vqdev vqs[] = {
-	{name: "consin", dev: VIRTIO_ID_CONSOLE, qnum: 2, f: &consin, arg: (void *)0},
-	{name: "consout", dev: VIRTIO_ID_CONSOLE, qnum: 2, f: consout, arg: (void *)0},
+static struct vqdev vqdev= {
+name: "console",
+dev: VIRTIO_ID_CONSOLE,
+features: 0,
+numvqs: 2,
+vqs: {
+		{name: "consin", qnum: 2, f: &consin, arg: (void *)0},
+		{name: "consout", qnum: 2, f: consout, arg: (void *)0},
+	}
 };
 
 int main(int argc, char **argv)
@@ -308,7 +314,7 @@ int main(int argc, char **argv)
 	vmctl.regs.tf_rsp = (uint64_t) &stack[1024];
 	if (mcp) {
 		/* set up virtio bits, which depend on threads being enabled. */
-		register_virtio_mmio(vqs, 2, virtio_mmio_base);
+		register_virtio_mmio(&vqdev, virtio_mmio_base);
 	}
 	printf("threads started\n");
 	printf("Writing command :%s:\n", cmd);
