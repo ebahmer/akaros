@@ -1587,7 +1587,8 @@ static int vmx_handle_ept_violation(struct vmx_vcpu *vcpu, struct vmctl *v) {
 	prot |= exit_qual & VMX_EPT_FAULT_INS ? PROT_EXEC : 0;
 	ret = handle_page_fault(current, gpa, prot);
 
-	if (ret) {
+	// Some of these get fixed in the vmm; be less chatty now.
+	if (0 && ret) {
 		printk("EPT page fault failure %d, GPA: %p, GVA: %p\n", ret, gpa,
 		       gva);
 		vmx_dump_cpu(vcpu);
@@ -1747,7 +1748,7 @@ int vmx_launch(struct vmctl *v) {
 		} else {
 			printk("unhandled exit: reason 0x%x, exit qualification 0x%x\n",
 			       ret, vmcs_read32(EXIT_QUALIFICATION));
-			vmx_dump_cpu(vcpu);
+			//vmx_dump_cpu(vcpu);
 			vcpu->shutdown = SHUTDOWN_UNHANDLED_EXIT_REASON;
 		}
 
@@ -1768,7 +1769,7 @@ int vmx_launch(struct vmctl *v) {
 	       vcpu->regs.tf_rip, vcpu->regs.tf_rsp, vcpu->shutdown, vcpu->shutdown);
 	v->regs = vcpu->regs;
 	v->shutdown = vcpu->shutdown;
-	v->ret_code = vcpu->ret_code;
+	v->ret_code = ret;
 //  hexdump((void *)vcpu->regs.tf_rsp, 128 * 8);
 	/*
 	 * Return both the reason for the shutdown and a status value.

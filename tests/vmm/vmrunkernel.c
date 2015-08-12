@@ -14,9 +14,11 @@
 #include <sys/mman.h>
 #include <vmm/coreboot_tables.h>
 #include <ros/vmm.h>
+#include <parlib/uthread.h>
 #include <vmm/virtio.h>
 #include <vmm/virtio_mmio.h>
 #include <vmm/virtio_ids.h>
+#include <vmm/virtio_config.h>
 
 /* this test will run the "kernel" in the negative address space. We hope. */
 int *mmap_blob;
@@ -164,11 +166,11 @@ void *consin(void *arg)
 static struct vqdev vqdev= {
 name: "console",
 dev: VIRTIO_ID_CONSOLE,
-features: 0,
+features: VIRTIO_F_VERSION_1,
 numvqs: 2,
 vqs: {
-		{name: "consin", qnum: 2, f: &consin, arg: (void *)0},
-		{name: "consout", qnum: 2, f: consout, arg: (void *)0},
+		{name: "consin", maxqnum: 2, f: &consin, arg: (void *)0},
+		{name: "consout", maxqnum: 2, f: consout, arg: (void *)0},
 	}
 };
 

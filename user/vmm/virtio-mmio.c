@@ -46,7 +46,7 @@ int debug_virtio_mmio = 1;
 
 
 #define VIRT_MAGIC 0x74726976 /* 'virt' */
-#define VIRT_VERSION 1
+#define VIRT_VERSION 2
 #define VIRT_VENDOR 0x554D4551 /* 'QEMU' */
 
 
@@ -157,6 +157,8 @@ static uint32_t virtio_mmio_read(uint64_t gpa)
         return 0;
     }
 #endif
+DPRINTF("FUCK 0x%x\n", offset);
+fprintf(stderr, "FUCK2 0x%x\n", offset);
     switch (offset) {
     case VIRTIO_MMIO_MAGIC_VALUE:
 	    return VIRT_MAGIC;
@@ -168,12 +170,14 @@ static uint32_t virtio_mmio_read(uint64_t gpa)
 	    return VIRT_VENDOR;
     case VIRTIO_MMIO_DEVICE_FEATURES:
 // ???	    if (proxy->host_features_sel) {
-	    return 0;
+//	    return 0;
 //	    }
+	printf("FUCK %x\n", mmio.vqdev->features);
+	DPRINTF("RETURN 0x%x \n", mmio.vqdev->features);
 	    return mmio.vqdev->features;
     case VIRTIO_MMIO_QUEUE_NUM_MAX:
 	    DPRINTF("For q %d, qnum is %d\n", mmio.qsel, mmio.vqdev->vqs[mmio.qsel].qnum);
-	    return mmio.vqdev->vqs[mmio.qsel].qnum;
+	    return mmio.vqdev->vqs[mmio.qsel].maxqnum;
     case VIRTIO_MMIO_QUEUE_PFN:
 	    return mmio.vqdev->vqs[mmio.qsel].pfn;
     case VIRTIO_MMIO_INTERRUPT_STATUS:
@@ -200,6 +204,7 @@ static uint32_t virtio_mmio_read(uint64_t gpa)
 
 static void virtio_mmio_write(uint64_t gpa, uint32_t value)
 {
+	uint64_t val64;
 	unsigned int offset = gpa - mmio.bar;
 	
 	DPRINTF("virtio_mmio_write offset %s 0x%x value 0x%x\n", virtio_names[offset], (int)offset, value);
@@ -255,21 +260,16 @@ static void virtio_mmio_write(uint64_t gpa, uint32_t value)
 	    else
 		    mmio.qsel = -1;
 	    break;
-#if 0
-    case VIRTIO_MMIO_QUEUENUM:
-        DPRINTF("mmio_queue write %d max %d\n", (int)value, VIRTQUEUE_MAX_SIZE);
-        virtio_queue_set_num(vdev, vdev->queue_sel, value);
+    case VIRTIO_MMIO_QUEUE_NUM:
+	mmio.vqdev->vqs[mmio.qsel].qnum = value;
         break;
-#endif
     case VIRTIO_MMIO_QUEUE_ALIGN:
-        //virtio_queue_set_align(vdev, vdev->queue_sel, value);
+	mmio.vqdev->vqs[mmio.qsel].qalign = value;
         break;
     case VIRTIO_MMIO_QUEUE_PFN:
 	// failure of vision: they used 32 bit numbers. Geez.
+	// v2 is better, we'll do v1 for now.
 	mmio.vqdev->vqs[mmio.qsel].pfn = value;
-        break;
-    case VIRTIO_MMIO_QUEUE_NOTIFY:
-	    if (value < mmio.vqdev->numvqs) {
 		    // let's kick off the thread and see how it goes?
 		    struct virtio_threadarg *va = malloc(sizeof(*va));
 		    va->arg = &mmio.vqdev->vqs[mmio.qsel];
@@ -277,8 +277,12 @@ static void virtio_mmio_write(uint64_t gpa, uint32_t value)
 		    fprintf(stderr, "START THE THREAD. pfn is 0x%x, virtio is %p\n", mmio.pagesize, va->arg->virtio);
 		    if (pthread_create(&va->arg->thread, NULL, va->arg->f, va)) {
 			    fprintf(stderr, "pth_create failed for vq %s", va->arg->name);
-				perror("pth_create");
-			}
+			    perror("pth_create");
+		    }
+        break;
+    case VIRTIO_MMIO_QUEUE_NOTIFY:
+	    if (value < mmio.vqdev->numvqs) {
+		    mmio.qsel = value;
 	    }
         break;
     case VIRTIO_MMIO_INTERRUPT_ACK:
@@ -297,6 +301,63 @@ static void virtio_mmio_write(uint64_t gpa, uint32_t value)
         }
 
         break;
+    case VIRTIO_MMIO_QUEUE_DESC_LOW:
+	    val64 = mmio.vqdev->vqs[mmio.qsel].qdesc;
+	    val64 = val64 >> 32;
+	    val64 = (val64 <<32) | value;
+	    mmio.vqdev->vqs[mmio.qsel].qdesc = val64;
+	    DPRINTF("qdesc set low result 0xx%x\n", val64);
+	    break;
+	    
+    case VIRTIO_MMIO_QUEUE_DESC_HIGH:
+	    val64 = (uint32_t) mmio.vqdev->vqs[mmio.qsel].qdesc;
+	    mmio.vqdev->vqs[mmio.qsel].qdesc = (((uint64_t) value) <<32) | val64;
+	    DPRINTF("qdesc set high result 0xx%x\n", mmio.vqdev->vqs[mmio.qsel].qdesc);
+	    break;
+	    
+/* Selected queue's Available Ring address, 64 bits in two halves */
+    case VIRTIO_MMIO_QUEUE_AVAIL_LOW:
+	    val64 = mmio.vqdev->vqs[mmio.qsel].qavail;
+	    val64 = val64 >> 32;
+	    val64 = (val64 <<32) | value;
+	    mmio.vqdev->vqs[mmio.qsel].qavail = val64;
+	    DPRINTF("qavail set low result 0xx%x\n", val64);
+	    break;
+    case VIRTIO_MMIO_QUEUE_AVAIL_HIGH:
+	    val64 = (uint32_t) mmio.vqdev->vqs[mmio.qsel].qavail;
+	    mmio.vqdev->vqs[mmio.qsel].qavail = (((uint64_t) value) <<32) | val64;
+	    DPRINTF("qavail set high result 0xx%x\n", mmio.vqdev->vqs[mmio.qsel].qavail);
+	    break;
+	    
+/* Selected queue's Used Ring address, 64 bits in two halves */
+    case VIRTIO_MMIO_QUEUE_USED_LOW:
+	    val64 = mmio.vqdev->vqs[mmio.qsel].qused;
+	    val64 = val64 >> 32;
+	    val64 = (val64 <<32) | value;
+	    mmio.vqdev->vqs[mmio.qsel].qused = val64;
+	    DPRINTF("qused set low result 0xx%x\n", val64);
+	    break;
+    case VIRTIO_MMIO_QUEUE_USED_HIGH:
+	    val64 = (uint32_t) mmio.vqdev->vqs[mmio.qsel].qused;
+	    mmio.vqdev->vqs[mmio.qsel].qused = (((uint64_t) value) <<32) | val64;
+	    DPRINTF("qused set used result 0xx%x\n", mmio.vqdev->vqs[mmio.qsel].qused);
+	    break;
+	    
+	// for v2. 
+    case VIRTIO_MMIO_QUEUE_READY:
+	    if (value) {
+		    // let's kick off the thread and see how it goes?
+		    struct virtio_threadarg *va = malloc(sizeof(*va));
+		    va->arg = &mmio.vqdev->vqs[mmio.qsel];
+		    va->arg->virtio = (void *)(va->arg->pfn * mmio.pagesize);
+		    fprintf(stderr, "START THE THREAD. pfn is 0x%x, virtio is %p\n", mmio.pagesize, va->arg->virtio);
+		    if (pthread_create(&va->arg->thread, NULL, va->arg->f, va)) {
+			    fprintf(stderr, "pth_create failed for vq %s", va->arg->name);
+			    perror("pth_create");
+		    }
+	    }
+	    break;
+
     case VIRTIO_MMIO_MAGIC_VALUE:
     case VIRTIO_MMIO_VERSION:
     case VIRTIO_MMIO_DEVICE_ID:
@@ -321,7 +382,7 @@ void virtio_mmio(struct vmctl *v)
 	// All virtio accesses seem to be 32 bits.
 	// valp points to a place to get or put the value. 
 	uint32_t *valp;
-	DPRINTF("v is %p\n", v);
+	//DPRINTF("v is %p\n", v);
 	// regp points to the register in hw_trapframe from which
 	// to load or store a result.
 	uint64_t *regp;
@@ -334,7 +395,7 @@ void virtio_mmio(struct vmctl *v)
 	// we don't have to find the source address in registers,
 	// only the register holding or receiving the value.
 	uint64_t gpa = v->gpa;
-	DPRINTF("gpa is %p\n", gpa);
+	//DPRINTF("gpa is %p\n", gpa);
 
 	// To find out what to do, we have to look at
 	// RIP. Technically, we should read RIP, walk the page tables
@@ -343,7 +404,7 @@ void virtio_mmio(struct vmctl *v)
 	// that as the kernel PA, or our VA, and see what's
 	// there. Hokey. Works.
 	uint8_t *kva = (void *)(v->regs.tf_rip & 0x3fffffff);
-	DPRINTF("kva is %p\n", kva);
+	//DPRINTF("kva is %p\n", kva);
 
 	if ((kva[0] != 0x8b) && (kva[0] != 0x89)) {
 		fprintf(stderr, "%s: can't handle instruction 0x%x\n", kva[0]);
@@ -351,7 +412,7 @@ void virtio_mmio(struct vmctl *v)
 	}
 
 	uint16_t ins = *(uint16_t *)kva;
-	DPRINTF("ins is %04x\n", ins);
+	//DPRINTF("ins is %04x\n", ins);
 	
 	int write = (kva[0] == 0x8b) ? 0 : 1;
 	if (write)

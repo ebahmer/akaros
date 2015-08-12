@@ -1,4 +1,5 @@
 #!/bin/bash
+export ARCH=x86
 rm -f obj/tests/vmm/vmrunkernel kern/kfs/bin/vmrunkernel && make tests && make fill-kfs &&make  && sudo cp obj/kern/akaros-kernel /var/lib/tftpboot/akaros && \
 	sudo service isc-dhcp-server restart && echo "OK" && exit
 
