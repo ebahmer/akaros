@@ -58,10 +58,10 @@ void *consout(void *arg)
 	uint32_t vv;
 	int i;
 	int num;
-	printf("Sleep 15 seconds\n");
-	uthread_sleep(15);
-	printf("----------------------- TT a %p\n", a);
-	printf("talk thread ttargs %x v %x\n", a, v);
+	if (debug) {
+		printf("----------------------- TT a %p\n", a);
+		printf("talk thread ttargs %x v %x\n", a, v);
+	}
 	
 	for(num = 0;;num++) {
 		/* host: use any buffers we should have been sent. */
@@ -74,10 +74,8 @@ void *consout(void *arg)
 		for(i = 0; i < outlen; i++) {
 			num++;
 			int j;
-			printf("Host:");
 			for (j = 0; j < iov[i].length; j++)
 				printf("%c", ((char *)iov[i].v)[j]);
-			printf("\n");
 		}
 		
 		if (debug)

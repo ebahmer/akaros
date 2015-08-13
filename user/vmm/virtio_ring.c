@@ -971,16 +971,13 @@ unsigned int wait_for_vq_desc(struct virtqueue *_vq,
 	uint16_t last_avail = lg_last_avail(vq);
 	int j = 0;
 
-	if (1){
-		 fprintf(stderr, "out_num %p in_num %p\n", out_num, in_num);
+	if (vringdebug){
+		fprintf(stderr, "out_num %p in_num %p\n", out_num, in_num);
 		fprintf(stderr, "va %p vq->vring %p\n", vq, vq->vring);
 	}
 	*out_num = *in_num = 0;
 	/* There's nothing available? */
-fprintf(stderr, "last_avail %d\n", last_avail);  
-		;
-fprintf(stderr, "vq %p vq->vring.avail %p idx %d\n", vq, vq->vring.avail, vq->vring.avail); 
-j = 0;
+	j = 0;
 	while (last_avail == vq->vring.avail->idx) {
 		//uint64_t event;
 		if (virtqueue_is_broken(_vq)) {
@@ -1089,7 +1086,7 @@ j = 0;
 			errx(1, "Looped descriptor");
 	} while ((i = next_desc(desc, i, max)) != max);
 
-fprintf(stderr, "RETURN head %d\n", head); 
+	if (vringdebug) fprintf(stderr, "RETURN head %d\n", head); 
 	return head;
 }
 
