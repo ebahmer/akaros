@@ -40,7 +40,7 @@ int nr_threads = 3;
 char *line, *consline, *outline;
 struct scatterlist iov[32];
 unsigned int inlen, outlen, conslen;
-int debug = 1;
+int debug = 0;
 /* unlike Linux, this shared struct is for both host and guest. */
 //	struct virtqueue *constoguest = 
 //		vring_new_virtqueue(0, 512, 8192, 0, inpages, NULL, NULL, "test");
@@ -66,7 +66,6 @@ void *consout(void *arg)
 	for(num = 0;;num++) {
 		/* host: use any buffers we should have been sent. */
 		head = wait_for_vq_desc(v, iov, &outlen, &inlen);
-		(void) getchar();
 		if (debug)
 			printf("CCC: vq desc head %d, gaveit %d gotitback %d\n", head, gaveit, gotitback);
 		for(i = 0; debug && i < outlen + inlen; i++)
@@ -74,7 +73,7 @@ void *consout(void *arg)
 		/* host: if we got an output buffer, just output it. */
 		for(i = 0; i < outlen; i++) {
 			num++;
-			printf("CCC: Host:%s:\n", (char *)iov[i].v);
+			printf("Host:%s:\n", (char *)iov[i].v);
 		}
 		
 		if (debug)

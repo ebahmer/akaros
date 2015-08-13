@@ -977,7 +977,7 @@ unsigned int wait_for_vq_desc(struct virtqueue *_vq,
 	/* There's nothing available? */
 fprintf(stderr, "last_avail %d\n", last_avail);  
 		;
-fprintf(stderr, "vq %p vq->vring.avail %p idx %d\n", vq, vq->vring.avail, vq->vring.avail); (void)getchar();
+fprintf(stderr, "vq %p vq->vring.avail %p idx %d\n", vq, vq->vring.avail, vq->vring.avail); 
 j = 0;
 	while (last_avail == vq->vring.avail->idx) {
 		//uint64_t event;
@@ -1087,7 +1087,7 @@ j = 0;
 			errx(1, "Looped descriptor");
 	} while ((i = next_desc(desc, i, max)) != max);
 
-fprintf(stderr, "RETURN head %d\n", head); (void)getchar();
+fprintf(stderr, "RETURN head %d\n", head); 
 	return head;
 }
 
