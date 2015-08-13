@@ -40,7 +40,7 @@
 #include <vmm/virtio_ids.h>
 #include <vmm/virtio_config.h>
 
-int debug_virtio_mmio = 1;
+int debug_virtio_mmio = 0;
 #define DPRINTF(fmt, ...) \
 	if (debug_virtio_mmio) { printf("virtio_mmio: " fmt , ## __VA_ARGS__); }
 
@@ -161,8 +161,6 @@ static uint32_t virtio_mmio_read(uint64_t gpa)
         return 0;
     }
 #endif
-DPRINTF("FUCK 0x%x\n", offset);
-fprintf(stderr, "FUCK2 0x%x\n", offset);
     switch (offset) {
     case VIRTIO_MMIO_MAGIC_VALUE:
 	    return VIRT_MAGIC;

@@ -73,7 +73,11 @@ void *consout(void *arg)
 		/* host: if we got an output buffer, just output it. */
 		for(i = 0; i < outlen; i++) {
 			num++;
-			printf("Host:%s:\n", (char *)iov[i].v);
+			int j;
+			printf("Host:");
+			for (j = 0; j < iov[i].length; j++)
+				printf("%c", ((char *)iov[i].v)[j]);
+			printf("\n");
 		}
 		
 		if (debug)
@@ -329,22 +333,22 @@ int main(int argc, char **argv)
 		void showstatus(FILE *f, struct vmctl *v);
 		int c;
 		vmctl.command = REG_RIP;
-		printf("RESUME?\n");
+		if (debug) printf("RESUME?\n");
 		//c = getchar();
 		//if (c == 'q')
 			//break;
-		printf("RIP %p, shutdown 0x%x\n", vmctl.regs.tf_rip, vmctl.shutdown);
+		if (debug) printf("RIP %p, shutdown 0x%x\n", vmctl.regs.tf_rip, vmctl.shutdown);
 		//showstatus(stdout, &vmctl);
 		// this will be in a function, someday.
 		// A rough check: is the GPA 
 		if ((vmctl.shutdown == 5/*EXIT_REASON_EPT_VIOLATION*/) && ((vmctl.gpa & ~0xfffULL) == virtiobase)) {
-			printf("DO SOME VIRTIO\n");
+			if (debug) printf("DO SOME VIRTIO\n");
 			virtio_mmio(&vmctl);
 			vmctl.shutdown = 0;
 			vmctl.gpa = 0;
 			vmctl.command = REG_ALL;
 		}
-		printf("NOW DO A RESUME\n");
+		if (debug) printf("NOW DO A RESUME\n");
 		ret = write(fd, &vmctl, sizeof(vmctl));
 		if (ret != sizeof(vmctl)) {
 			perror(cmd);
