@@ -38,7 +38,7 @@ struct vmctl {
 };
 
 char *regname(uint8_t reg);
-int decode(struct vmctl *v, uint64_t *gpa, uint8_t *destreg, uint64_t **regp, int *store);
+int decode(struct vmctl *v, uint64_t *gpa, uint8_t *destreg, uint64_t **regp, int *store, int *size, int *advance);
 int io(struct vmctl *v);
 
 #endif /* ROS_INC_VMM_H */
