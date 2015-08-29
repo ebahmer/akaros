@@ -13,6 +13,8 @@
 #include <ros/syscall.h>
 #include <sys/mman.h>
 #include <vmm/coreboot_tables.h>
+#include <ros/acpi.h>
+#include <ros/acconfig.h>
 #include <ros/vmm.h>
 #include <ros/arch/mmu.h>
 #include <ros/vmx.h>
@@ -30,41 +32,64 @@
 /* assume they're all 256 bytes long just to make it easy. Just have pointers that point to aligned things. */
 
 struct Rsdp rsdp = {
-	.signature = "RSDP PTR ",
+	.signature = "RSD PTR ",
 	.rchecksum = 0,
 	.oemid = "AKAROS",
-	.raddr = [0x00, 0x01, 0xe0, 0x00], // 0x00e00100
+	.raddr = 0,
 	.revision = 2,
 	.length = 36,
 };
 
+struct ffadt { 
+	struct Sdthdr sad;
+	struct Fadt crap;
+}  __attribute__ ((packed)) ffadt = {
+	.sad = {
+		.sig = "FADT",
+		// This is so stupid. Incredibly stupid.
+		.length = {sizeof(struct ffadt), sizeof(struct ffadt)>>8, 0, 0},
+		.rev = 0,
+		.csum = 0,
+		.oemid = "AKAROS",
+		.oemtblid = "ALPHABET",
+		.oemrev = "WORK",
+		.creatorid = "NAN ",
+		.creatorrev = "WAN "
+	},
+	.crap = {
+	}
+};
+
 /* This has to be dropped into memory, then the other crap just follows it.
- * this starts at 0xe00100
  */
-struct Sdthdr fmadt = {
-	.sig = "MADT",
-	.length = 0,
-	.rev = 0,
-	.csum = 0,
-	.oemid = "AKAROS",
-	.oemtblid = "GOOGGOOD",
-	.oemrev = "WORK",
-	.creatorid = "NAN ",
-	.creatorrev = "WAN "
-};
-
-struct Madt madt = {
-	.lapicpa = 0xfee00000ULL,
-	.pcat = 0,
-	// Intel screwed this up. They put a pointer here, but it seems to imply an array? Who knows? 
-	.st = 0x00e00200;
-};
-
-struct Apicst Apic0 = {.type = 0, .next = 0x00e00300, .pid = 0, .id = 0};
-struct Apicst Apic1 = {.type = 1, .next = 0x00000000, .id = 1, .ibase = 0xfec00000, .ibase 0};
+struct fmadt {
+	struct Sdthdr sad;
+	struct Madt madt;
+}  __attribute__ ((packed)) fmadt = {
+	.sad = {
+		.sig = "MADT",
+		// This is so stupid. Incredibly stupid.
+		.length = {sizeof(struct fmadt), sizeof(struct fmadt)>>8, 0, 0},
+		.rev = 0,
+		.csum = 0,
+		.oemid = "AKAROS",
+		.oemtblid = "ALPHABET",
+		.oemrev = "WORK",
+		.creatorid = "NAN ",
+		.creatorrev = "WAN "
+	},
 	
-/* the array of things. These get copied to consecutive 256-byte boundary areas starting at 0xe0000 */
-void *apicarray[] = { &rsdp, &fmadt, &madt, &Apic0, &Apic1};
+	.madt = {
+		.lapicpa = 0xfee00000ULL,
+		.pcat = 0,
+		// Intel screwed this up. They put a pointer here, but it seems to imply an array? Who knows? 
+		.st = (void *)0,
+	}
+};
+
+struct Apicst Apic0 = {.type = 0, .lapic = {.pid = 0, .id = 0}};
+struct Apicst Apic1 = {.type = 1, .ioapic = {.id = 1, .ibase = 0xfec00000, .addr = 0}};
+
 /* this test will run the "kernel" in the negative address space. We hope. */
 void *low1m;
 uint8_t low4k[4096];
@@ -213,12 +238,39 @@ void lowmem() {
 	__asm__ __volatile__ (".section .lowmem, \"aw\"\n\tlow: \n\t.=0x1000\n\t.align 0x100000\n\t.previous\n");
 }
 
+static uint8_t acpi_tb_checksum(uint8_t *buffer, uint32_t length)
+{
+	uint8_t sum = 0;
+	uint8_t *end = buffer + length;
+
+	while (buffer < end) {
+		sum = (uint8_t)(sum + *(buffer++));
+	}
+
+	return (sum);
+}
+
+static void gencsum(uint8_t *target, void *data, int len)
+{
+	uint8_t csum;
+	// blast target to zero so it does not get counted (it might be in the struct we checksum) 
+	// And, yes, it is, goodness.
+	fprintf(stderr, "gencsum %p target %p source %d bytes\n", target, data, len);
+	*target = 0;
+	csum  = acpi_tb_checksum((uint8_t *)data, len - 1);
+	*target = ~csum + 1;
+}
+
 int main(int argc, char **argv)
 {
+	void *a = (void *)0xe0000;
+	struct Rsdp *r;
+	struct ffadt *f;
+	struct fmadt *m;
+	struct Xsdt *Xsdt;
 	uint64_t virtiobase = 0x100000000ULL;
 	// lowmem is a bump allocated pointer to 2M at the "physbase" of memory 
 	void *lowmem = (void *) 0x1000000;
-	void *rsdp = (void *) 0x1000000;
 	struct vmctl vmctl;
 	int amt;
 	int vmmflags = 0; // Disabled probably forever. VMM_VMCALL_PRINTF;
@@ -228,6 +280,8 @@ int main(int argc, char **argv)
 	void * x;
 	int kfd = -1;
 	static char cmd[512];
+	int i;
+	uint8_t csum;
 	void *coreboot_tables = (void *) 0x1165000;
 printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 
@@ -238,6 +292,10 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 	}
 	memset(_kernel, 0, sizeof(_kernel));
 	memset(lowmem, 0xff, 2*1048576);
+	memset(low4k, 0xff, 4096);
+	// avoid at all costs, requires too much instruction emulation.
+	//low4k[0x40e] = 0;
+	//low4k[0x40f] = 0xe0;
 
 	if (fd < 0) {
 		perror("#cons/sysctl");
@@ -296,9 +354,8 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 	}
 	fprintf(stderr, "Read in %d bytes\n", x-kerneladdress);
 	close(kfd);
-	/* blob that is faulted in from the EPT first.  we need this to be in low
-	 * memory (not above the normal mmap_break), so the EPT can look it up.
-	 * Note that we won't get 4096.  The min is 1MB now, and ld is there. */
+
+	// The low 1m so we can fill in bullshit like ACPI. */
 	low1m = mmap((int*)4096, MiB-4096, PROT_READ | PROT_WRITE,
 	                 MAP_ANONYMOUS, -1, 0);
 	if (low1m != (void *)4096) {
@@ -306,28 +363,59 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 		exit(1);
 	}
 	memset(low1m, 0xff, MiB-4096);
+	r = a;
+	fprintf(stderr, "install rsdp to %p\n", r);
+	*r = rsdp;
+	a += sizeof(*r);
+	memmove(&r->xaddr, &a, sizeof(a));
+	gencsum(&r->rchecksum, r, ACPI_RSDP_CHECKSUM_LENGTH);
+	if ((csum = acpi_tb_checksum((uint8_t *) r, ACPI_RSDP_CHECKSUM_LENGTH)) != 0) {
+		printf("RSDP has bad checksum; summed to %x\n", csum);
+		exit(1);
+	}
 
-	/* read in acpi. */
-	kfd = open("#P/realmodemem", 0);
-	if (kfd < 0) {
-		perror("#P/realmodemem");
-	}
-	amt = read(kfd, low4k, sizeof(low4k));
-	if (amt < sizeof(low4k)) {
-		fprintf(stderr, "read 4k: %d\n", amt);
-		perror("read");
+	/* Check extended checksum if table version >= 2 */
+	gencsum(&r->xchecksum, r, ACPI_RSDP_XCHECKSUM_LENGTH);
+	if ((rsdp.revision >= 2) &&
+	    (acpi_tb_checksum((uint8_t *) r, ACPI_RSDP_XCHECKSUM_LENGTH) != 0)) {
+		printf("RSDP has bad checksum v2\n");
 		exit(1);
 	}
-	memset(low4k, 0xff, 4096);
-	amt = read(kfd, low1m, MiB-4096);
-	if (amt < MiB-4096) {
-		fprintf(stderr, "read mib-4k: %d\n", amt);
-		perror("read");
+#if 0
+	Xsdt = a;
+	a += sizeof(*Xsdt);
+	Xsdt->asize = 8;
+	Xsdt->p = a;
+#endif
+	f = a;
+	fprintf(stderr, "install fadt to %p\n", f);
+	*f = ffadt;
+	a += sizeof(*f);
+	gencsum(&f->sad.csum, f, *(int *)f->sad.length);
+	if (acpi_tb_checksum((uint8_t *)f, *(int *)f->sad.length) != 0) {
+		printf("ffadt has bad checksum v2\n");
 		exit(1);
 	}
-	close(kfd);
-	printf("Read in %d bytes for RSDP\n", MiB-4096);
-	hexdump(stdout, low4k, 4096);
+
+	m = a;
+	*m = fmadt;
+	a += sizeof(*m);
+	m->madt.st = a;
+	fprintf(stderr, "install madt to %p\n", m);
+	gencsum(&m->sad.csum, m, *(int *)m->sad.length);
+	if (acpi_tb_checksum((uint8_t *) m, *(int *)m->sad.length) != 0) {
+		printf("fmadt has bad checksum v2\n");
+		exit(1);
+	}
+	fprintf(stderr, "allchecksums ok\n");
+
+	Apic0.next = a + sizeof(Apic0);
+	memmove(a, &Apic0, sizeof(Apic0));
+	a += sizeof(Apic0);
+	memmove(a, &Apic1, sizeof(Apic1));
+	a += sizeof(Apic1);
+//	Xsdt->len = a-(void *)f;
+	hexdump(stdout, r, a-(void *)r);
 
 	if (ros_syscall(SYS_setup_vmm, nr_gpcs, vmmflags, 0, 0, 0, 0) != nr_gpcs) {
 		perror("Guest pcore setup failed");
@@ -373,7 +461,7 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 	p512[PML4(highkernbase)] = (unsigned long long)p1 | 7;
 	p1[PML3(highkernbase)] = /*0x87; */(unsigned long long)p2m | 7;
 #define _2MiB (0x200000)
-	int i;
+
 	for (i = 0; i < 512; i++) {
 		p2m[PML2(kernbase + i * _2MiB)] = 0x87 | i * _2MiB;
 	}
@@ -444,6 +532,8 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 				hexdump(stdout, regp, size);
 			} else {
 				printf("EPT violation: can't handle %p\n", gpa);
+				printf("RIP %p, shutdown 0x%x\n", vmctl.regs.tf_rip, vmctl.shutdown);
+				showstatus(stdout, &vmctl);
 				quit = 1;
 				break;
 			}
