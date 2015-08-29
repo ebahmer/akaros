@@ -13,8 +13,7 @@
 #include <ros/syscall.h>
 #include <sys/mman.h>
 #include <vmm/coreboot_tables.h>
-#include <ros/acpi.h>
-#include <ros/acconfig.h>
+#include <acpi/acpi.h>
 #include <ros/vmm.h>
 #include <ros/arch/mmu.h>
 #include <ros/vmx.h>
@@ -31,64 +30,58 @@
  */
 /* assume they're all 256 bytes long just to make it easy. Just have pointers that point to aligned things. */
 
-struct Rsdp rsdp = {
+struct acpi_table_rsdp rsdp = {
 	.signature = "RSD PTR ",
-	.rchecksum = 0,
-	.oemid = "AKAROS",
-	.raddr = 0,
+	.oem_id = "AKAROS",
 	.revision = 2,
 	.length = 36,
 };
 
-struct ffadt { 
-	struct Sdthdr sad;
-	struct Fadt crap;
-}  __attribute__ ((packed)) ffadt = {
-	.sad = {
-		.sig = "FADT",
+struct acpi_table_xsdt xsdt = {
+	.header = {
+		.signature= "XSDT",
 		// This is so stupid. Incredibly stupid.
-		.length = {sizeof(struct ffadt), sizeof(struct ffadt)>>8, 0, 0},
-		.rev = 0,
-		.csum = 0,
-		.oemid = "AKAROS",
-		.oemtblid = "ALPHABET",
-		.oemrev = "WORK",
-		.creatorid = "NAN ",
-		.creatorrev = "WAN "
+		.revision = 0,
+		.oem_id = "AKAROS",
+		.oem_table_id = "ALPHABET",
+		.oem_revision = 0,
+		.asl_compiler_id = "RON ",
+		.asl_compiler_revision = 0,
 	},
-	.crap = {
-	}
+};
+struct acpi_table_fadt fadt = {
+	.header = {
+		.signature= "FADT",
+		// This is so stupid. Incredibly stupid.
+		.revision = 0,
+		.oem_id = "AKAROS",
+		.oem_table_id = "ALPHABET",
+		.oem_revision = 0,
+		.asl_compiler_id = "RON ",
+		.asl_compiler_revision = 0,
+	},
 };
 
 /* This has to be dropped into memory, then the other crap just follows it.
  */
-struct fmadt {
-	struct Sdthdr sad;
-	struct Madt madt;
-}  __attribute__ ((packed)) fmadt = {
-	.sad = {
-		.sig = "MADT",
-		// This is so stupid. Incredibly stupid.
-		.length = {sizeof(struct fmadt), sizeof(struct fmadt)>>8, 0, 0},
-		.rev = 0,
-		.csum = 0,
-		.oemid = "AKAROS",
-		.oemtblid = "ALPHABET",
-		.oemrev = "WORK",
-		.creatorid = "NAN ",
-		.creatorrev = "WAN "
+struct acpi_table_madt madt = {
+	.header = {
+		.signature = "MADT",
+		.revision = 0,
+		.oem_id = "AKAROS",
+		.oem_table_id = "ALPHABET",
+		.oem_revision = 0,
+		.asl_compiler_id = "RON ",
+		.asl_compiler_revision = 0,
 	},
 	
-	.madt = {
-		.lapicpa = 0xfee00000ULL,
-		.pcat = 0,
-		// Intel screwed this up. They put a pointer here, but it seems to imply an array? Who knows? 
-		.st = (void *)0,
-	}
+	.address = 0xfee00000ULL,
 };
 
-struct Apicst Apic0 = {.type = 0, .lapic = {.pid = 0, .id = 0}};
-struct Apicst Apic1 = {.type = 1, .ioapic = {.id = 1, .ibase = 0xfec00000, .addr = 0}};
+struct acpi_madt_local_apic Apic0 = {.header = {.type = ACPI_MADT_TYPE_LOCAL_APIC, .length = sizeof(struct acpi_madt_local_apic)},
+				     .processor_id = 0, .id = 0};
+struct acpi_madt_io_apic Apic1 = {.header = {.type = ACPI_MADT_TYPE_IO_APIC, .length = sizeof(struct acpi_madt_io_apic)},
+				  .id = 1, .address = 0xfec00000, .global_irq_base = 0};
 
 /* this test will run the "kernel" in the negative address space. We hope. */
 void *low1m;
@@ -242,11 +235,13 @@ static uint8_t acpi_tb_checksum(uint8_t *buffer, uint32_t length)
 {
 	uint8_t sum = 0;
 	uint8_t *end = buffer + length;
-
+	printf("tbchecksum %p for %d", buffer, length);
 	while (buffer < end) {
+		if (end - buffer < 2)
+			printf("%02x\n", sum);
 		sum = (uint8_t)(sum + *(buffer++));
 	}
-
+	printf(" is %02x\n", sum);
 	return (sum);
 }
 
@@ -255,19 +250,20 @@ static void gencsum(uint8_t *target, void *data, int len)
 	uint8_t csum;
 	// blast target to zero so it does not get counted (it might be in the struct we checksum) 
 	// And, yes, it is, goodness.
-	fprintf(stderr, "gencsum %p target %p source %d bytes\n", target, data, len);
+	printf("gencsum %p target %p source %d bytes\n", target, data, len);
 	*target = 0;
-	csum  = acpi_tb_checksum((uint8_t *)data, len - 1);
+	csum  = acpi_tb_checksum((uint8_t *)data, len);
 	*target = ~csum + 1;
+	printf("Cmoputed is %02x\n", *target);
 }
 
 int main(int argc, char **argv)
 {
 	void *a = (void *)0xe0000;
-	struct Rsdp *r;
-	struct ffadt *f;
-	struct fmadt *m;
-	struct Xsdt *Xsdt;
+	struct acpi_table_rsdp *r;
+	struct acpi_table_fadt *f;
+	struct acpi_table_madt *m;
+	struct acpi_table_xsdt *x;
 	uint64_t virtiobase = 0x100000000ULL;
 	// lowmem is a bump allocated pointer to 2M at the "physbase" of memory 
 	void *lowmem = (void *) 0x1000000;
@@ -277,7 +273,7 @@ int main(int argc, char **argv)
 	uint64_t entry = 0x1200000, kerneladdress = 0x1200000;
 	int nr_gpcs = 1;
 	int fd = open("#c/vmctl", O_RDWR), ret;
-	void * x;
+	void * xp;
 	int kfd = -1;
 	static char cmd[512];
 	int i;
@@ -340,9 +336,9 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 		exit(1);
 	}
 	// read in the kernel.
-	x = (void *)kerneladdress;
+	xp = (void *)kerneladdress;
 	for(;;) {
-		amt = read(kfd, x, 1048576);
+		amt = read(kfd, xp, 1048576);
 		if (amt < 0) {
 			perror("read");
 			exit(1);
@@ -350,9 +346,9 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 		if (amt == 0) {
 			break;
 		}
-		x += amt;
+		xp += amt;
 	}
-	fprintf(stderr, "Read in %d bytes\n", x-kerneladdress);
+	fprintf(stderr, "Read in %d bytes\n", xp-kerneladdress);
 	close(kfd);
 
 	// The low 1m so we can fill in bullshit like ACPI. */
@@ -367,54 +363,67 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 	fprintf(stderr, "install rsdp to %p\n", r);
 	*r = rsdp;
 	a += sizeof(*r);
-	memmove(&r->xaddr, &a, sizeof(a));
-	gencsum(&r->rchecksum, r, ACPI_RSDP_CHECKSUM_LENGTH);
+	memmove(&r->xsdt_physical_address, &a, sizeof(a));
+	gencsum(&r->checksum, r, ACPI_RSDP_CHECKSUM_LENGTH);
 	if ((csum = acpi_tb_checksum((uint8_t *) r, ACPI_RSDP_CHECKSUM_LENGTH)) != 0) {
 		printf("RSDP has bad checksum; summed to %x\n", csum);
 		exit(1);
 	}
 
 	/* Check extended checksum if table version >= 2 */
-	gencsum(&r->xchecksum, r, ACPI_RSDP_XCHECKSUM_LENGTH);
+	gencsum(&r->extended_checksum, r, ACPI_RSDP_XCHECKSUM_LENGTH);
 	if ((rsdp.revision >= 2) &&
 	    (acpi_tb_checksum((uint8_t *) r, ACPI_RSDP_XCHECKSUM_LENGTH) != 0)) {
 		printf("RSDP has bad checksum v2\n");
 		exit(1);
 	}
-#if 0
-	Xsdt = a;
-	a += sizeof(*Xsdt);
-	Xsdt->asize = 8;
-	Xsdt->p = a;
-#endif
+
+	/* just leave a bunch of space for the xsdt. */
+	/* we need to zero the area since it has pointers. */
+	x = a;
+	a += sizeof(*x) + 8*sizeof(void *);
+	memset(x, 0, a - (void *)x);
+	fprintf(stderr, "install xsdt to %p\n", x);
+	*x = xsdt;
+	x->table_offset_entry[0] = 0;
+	x->table_offset_entry[1] = 0;
+	x->header.length = a - (void *)x;
+
 	f = a;
 	fprintf(stderr, "install fadt to %p\n", f);
-	*f = ffadt;
+	*f = fadt;
+	x->table_offset_entry[2] = (uint64_t) f;
 	a += sizeof(*f);
-	gencsum(&f->sad.csum, f, *(int *)f->sad.length);
-	if (acpi_tb_checksum((uint8_t *)f, *(int *)f->sad.length) != 0) {
+	f->header.length = a - (void *)f;
+	gencsum(&f->header.checksum, f, f->header.length);
+	if (acpi_tb_checksum((uint8_t *)f, f->header.length) != 0) {
 		printf("ffadt has bad checksum v2\n");
 		exit(1);
 	}
 
 	m = a;
-	*m = fmadt;
+	*m = madt;
+	x->table_offset_entry[3] = (uint64_t) m;
 	a += sizeof(*m);
-	m->madt.st = a;
 	fprintf(stderr, "install madt to %p\n", m);
-	gencsum(&m->sad.csum, m, *(int *)m->sad.length);
-	if (acpi_tb_checksum((uint8_t *) m, *(int *)m->sad.length) != 0) {
-		printf("fmadt has bad checksum v2\n");
-		exit(1);
-	}
-	fprintf(stderr, "allchecksums ok\n");
-
-	Apic0.next = a + sizeof(Apic0);
 	memmove(a, &Apic0, sizeof(Apic0));
 	a += sizeof(Apic0);
 	memmove(a, &Apic1, sizeof(Apic1));
 	a += sizeof(Apic1);
-//	Xsdt->len = a-(void *)f;
+	m->header.length = a - (void *)m;
+	gencsum(&m->header.checksum, m, m->header.length);
+	if (acpi_tb_checksum((uint8_t *) m, m->header.length) != 0) {
+		printf("madt has bad checksum v2\n");
+		exit(1);
+	}
+	fprintf(stderr, "allchecksums ok\n");
+
+	gencsum(&x->header.checksum, x, x->header.length);
+	if ((csum = acpi_tb_checksum((uint8_t *) x, x->header.length)) != 0) {
+		printf("XSDT has bad checksum; summed to %x\n", csum);
+		exit(1);
+	}
+
 	hexdump(stdout, r, a-(void *)r);
 
 	if (ros_syscall(SYS_setup_vmm, nr_gpcs, vmmflags, 0, 0, 0, 0) != nr_gpcs) {
@@ -434,7 +443,7 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 		pthread_mcp_init();					/* gives us one vcore */
 		vcore_request(nr_threads - 1);		/* ghetto incremental interface */
 		for (int i = 0; i < nr_threads; i++) {
-			x = __procinfo.vcoremap;
+			xp = __procinfo.vcoremap;
 			printf("%p\n", __procinfo.vcoremap);
 			printf("Vcore %d mapped to pcore %d\n", i,
 			    	__procinfo.vcoremap[i].pcoreid);
