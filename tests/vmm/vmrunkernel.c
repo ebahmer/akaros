@@ -66,7 +66,7 @@ struct acpi_table_fadt fadt = {
  */
 struct acpi_table_madt madt = {
 	.header = {
-		.signature = "MADT",
+		.signature = "APIC",
 		.revision = 0,
 		.oem_id = "AKAROS",
 		.oem_table_id = "ALPHABET",
