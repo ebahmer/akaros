@@ -13,7 +13,7 @@
 #include <ros/syscall.h>
 #include <sys/mman.h>
 #include <vmm/coreboot_tables.h>
-#include <acpi/acpi.h>
+#include <ros/acpi/acpi.h>
 #include <ros/vmm.h>
 #include <ros/arch/mmu.h>
 #include <ros/vmx.h>
