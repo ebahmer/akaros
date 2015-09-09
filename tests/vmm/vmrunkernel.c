@@ -539,6 +539,7 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 				if (debug) printf("DO SOME VIRTIO\n");
 				// Lucky for us the various virtio ops are well-defined.
 				virtio_mmio(&vmctl, gpa, regx, regp, store);
+#if 0
 			} else if ((gpa & 0xfee00000) == 0xfee00000) {
 				// until we fix our include mess, just put the proto here.
 				int apic(struct vmctl *v, uint64_t gpa, int destreg, uint64_t *regp, int store);
@@ -547,6 +548,7 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 				// until we fix our include mess, just put the proto here.
 				int ioapic(struct vmctl *v, uint64_t gpa, int destreg, uint64_t *regp, int store);
 				ioapic(&vmctl, gpa, regx, regp, store);
+#endif
 			} else if (gpa < 4096) {
 				uint64_t val = 0;
 				memmove(&val, &low4k[gpa], size);
