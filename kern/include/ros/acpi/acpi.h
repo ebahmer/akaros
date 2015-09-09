@@ -53,15 +53,15 @@
  *
  * Note: The order of these include files is important.
  */
-#include <acpi/platform/acenv.h>	/* Environment-specific items */
-#include <acpi/acnames.h>		/* Common ACPI names and strings */
-#include <acpi/actypes.h>		/* ACPICA data types and structures */
-#include <acpi/acexcep.h>		/* ACPICA exceptions */
-#include <acpi/actbl.h>		/* ACPI table definitions */
-#include <acpi/acoutput.h>		/* Error output and Debug macros */
-#include <acpi/acrestyp.h>		/* Resource Descriptor structs */
-#include <acpi/acpiosxf.h>		/* OSL interfaces (ACPICA-to-OS) */
-#include <acpi/acpixf.h>		/* ACPI core subsystem external interfaces */
-#include <acpi/platform/acenvex.h>	/* Extra environment-specific items */
+#include <ros/acpi/platform/acenv.h>	/* Environment-specific items */
+#include <ros/acpi/acnames.h>		/* Common ACPI names and strings */
+#include <ros/acpi/actypes.h>		/* ACPICA data types and structures */
+#include <ros/acpi/acexcep.h>		/* ACPICA exceptions */
+#include <ros/acpi/actbl.h>		/* ACPI table definitions */
+#include <ros/acpi/acoutput.h>		/* Error output and Debug macros */
+#include <ros/acpi/acrestyp.h>		/* Resource Descriptor structs */
+#include <ros/acpi/acpiosxf.h>		/* OSL interfaces (ACPICA-to-OS) */
+#include <ros/acpi/acpixf.h>		/* ACPI core subsystem external interfaces */
+#include <ros/acpi/platform/acenvex.h>	/* Extra environment-specific items */
 
 #endif				/* __ACPI_H__ */
