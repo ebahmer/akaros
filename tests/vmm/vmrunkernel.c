@@ -13,7 +13,7 @@
 #include <ros/syscall.h>
 #include <sys/mman.h>
 #include <vmm/coreboot_tables.h>
-#include <ros/acpi/acpi.h>
+//#include <ros/acpi/acpi.h>
 #include <ros/vmm.h>
 #include <ros/arch/mmu.h>
 #include <ros/vmx.h>
@@ -24,6 +24,7 @@
 #include <vmm/virtio_config.h>
 
 int msrio(struct vmctl *vcpu, uint32_t opcode);
+#if 0
 /* Kind of sad what a total clusterf the pc world is. By 1999, you could just scan the hardware 
  * and work it out. But 2005, that was no longer possible. How sad. 
  * so we have to fake acpi to make it all work. !@#$!@#$#.
@@ -83,6 +84,7 @@ struct acpi_madt_local_apic Apic0 = {.header = {.type = ACPI_MADT_TYPE_LOCAL_API
 				     .processor_id = 0, .id = 0};
 struct acpi_madt_io_apic Apic1 = {.header = {.type = ACPI_MADT_TYPE_IO_APIC, .length = sizeof(struct acpi_madt_io_apic)},
 				  .id = 1, .address = 0xfec00000, .global_irq_base = 0};
+#endif
 
 /* this test will run the "kernel" in the negative address space. We hope. */
 void *low1m;
@@ -261,10 +263,12 @@ static void gencsum(uint8_t *target, void *data, int len)
 int main(int argc, char **argv)
 {
 	void *a = (void *)0xe0000;
+#if 0
 	struct acpi_table_rsdp *r;
 	struct acpi_table_fadt *f;
 	struct acpi_table_madt *m;
 	struct acpi_table_xsdt *x;
+#endif
 	uint64_t virtiobase = 0x100000000ULL;
 	// lowmem is a bump allocated pointer to 2M at the "physbase" of memory 
 	void *lowmem = (void *) 0x1000000;
@@ -360,6 +364,7 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 		exit(1);
 	}
 	memset(low1m, 0xff, MiB-4096);
+#if 0
 	r = a;
 	fprintf(stderr, "install rsdp to %p\n", r);
 	*r = rsdp;
@@ -426,6 +431,7 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 	}
 
 	hexdump(stdout, r, a-(void *)r);
+#endif
 
 	if (ros_syscall(SYS_setup_vmm, nr_gpcs, vmmflags, 0, 0, 0, 0) != nr_gpcs) {
 		perror("Guest pcore setup failed");
