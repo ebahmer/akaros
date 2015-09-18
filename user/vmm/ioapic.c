@@ -48,8 +48,8 @@ struct {
 	int mode;
 	uint32_t value;
 } ioapicregs[256] = {
-[0x00] {.name = "IO", .mode =  readwrite},
-[0x01] {.name = "fix me", .mode =  readwrite},
+[0x00] {.name = "ID", .mode =  readwrite},
+[0x01] {.name = "version", .mode =  readonly},
 [0x02] {.name = "fix me", .mode = readwrite},
 [0x03] {.name = "fix me", .mode = readonly},
 [0x04] {.name = "fix me", .mode =  reserved},
@@ -119,6 +119,24 @@ static uint32_t ioapic_read(uint64_t offset)
 {
 
 	uint32_t low;
+  if((a20addr & ~0x3) != ((a20addr+len-1) & ~0x3)) {
+    BX_PANIC(("I/O APIC read at address 0x" FMT_PHY_ADDRX " spans 32-bit boundary !", a20addr));
+    return 1;
+  }
+  Bit32u value = theIOAPIC->read_aligned(a20addr & ~0x3);
+  if(len == 4) { // must be 32-bit aligned
+    *((Bit32u *)data) = value;
+    return 1;
+  }
+  // handle partial read, independent of endian-ness
+  value >>= (a20addr&3)*8;
+  if (len == 1)
+    *((Bit8u *) data) = value & 0xff;
+  else if (len == 2)
+    *((Bit16u *)data) = value & 0xffff;
+  else
+    BX_PANIC(("Unsupported I/O APIC read at address 0x" FMT_PHY_ADDRX ", len=%d", a20addr, len));
+
 
 	DPRINTF("ioapic_read offset %s 0x%x\n", ioapicregs[offset].name, (int)offset);
 
@@ -131,6 +149,8 @@ static uint32_t ioapic_read(uint64_t offset)
 
 	// no special cases yet.
 	switch (offset) {
+	case 1:
+		return 0x170011;
 	default:
 		DPRINTF("%s: return %08x\n", ioapicregs[offset].name, ioapicregs[offset].value);
 		return ioapicregs[offset].value;
@@ -152,8 +172,36 @@ static void ioapic_write(uint64_t offset, uint32_t value)
 		// panic? what to do?
 		return;
 	}
+    case 0x00: // set APIC ID
+      {
+        Bit8u newid = (value >> 24) & apic_id_mask;
+        BX_INFO(("IOAPIC: setting id to 0x%x", newid));
+        set_id (newid);
+        return;
+      }
+    case 0x01: // version
+    case 0x02: // arbitration id
+      BX_INFO(("IOAPIC: could not write, IOREGSEL=0x%02x", ioregsel));
+      return;
+    default:
+      int index = (ioregsel - 0x10) >> 1;
+      if (index >= 0 && index < BX_IOAPIC_NUM_PINS) {
+        bx_io_redirect_entry_t *entry = ioredtbl + index;
+        if (ioregsel&1)
+          entry->set_hi_part(value);
+        else
+          entry->set_lo_part(value);
+        char buf[1024];
+        entry->sprintf_self(buf);
+        BX_DEBUG(("IOAPIC: now entry[%d] is %s", index, buf));
+        service_ioapic();
+        return;
+      }
+      BX_PANIC(("IOAPIC: IOREGSEL points to undefined register %02x", ioregsel));
 
 	switch (offset) {
+	case 0:
+		ioapicregs.id
 	default:
 		DPRINTF("%s: Set to %08x\n", ioapicregs[offset].name, value);
 		ioapicregs[offset].value = value;
@@ -168,11 +216,7 @@ int ioapic(struct vmctl *v, uint64_t gpa, int destreg, uint64_t *regp, int store
 	/* basic sanity tests. */
 	// TODO: Should be minus the base but FIXME
 	offset = gpa & 0xfffff;
-	if (offset & 0xf) {
-		DPRINTF("bad register offset; low nibl is non-zero\n");
-		return -1;
-	}
-	offset >>= 4;
+
 	if (offset > IOAPIC_CONFIG) {
 		DPRINTF("Bad register offset: 0x%x and max is 0x%x\n", gpa, gpa + IOAPIC_CONFIG);
 		return -1;
