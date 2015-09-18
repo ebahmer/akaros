@@ -54,17 +54,17 @@ static bx_bool ioapic_read(bx_phy_address a20addr, unsigned len, void *data, voi
     BX_PANIC(("I/O APIC read at address 0x" FMT_PHY_ADDRX " spans 32-bit boundary !", a20addr));
     return 1;
   }
-  Bit32u value = theIOAPIC->read_aligned(a20addr & ~0x3);
+  uint32_t value = theIOAPIC->read_aligned(a20addr & ~0x3);
   if(len == 4) { // must be 32-bit aligned
-    *((Bit32u *)data) = value;
+    *((uint32_t *)data) = value;
     return 1;
   }
   // handle partial read, independent of endian-ness
   value >>= (a20addr&3)*8;
   if (len == 1)
-    *((Bit8u *) data) = value & 0xff;
+    *((uint8_t *) data) = value & 0xff;
   else if (len == 2)
-    *((Bit16u *)data) = value & 0xffff;
+    *((uint16_t *)data) = value & 0xffff;
   else
     BX_PANIC(("Unsupported I/O APIC read at address 0x" FMT_PHY_ADDRX ", len=%d", a20addr, len));
 
@@ -79,16 +79,16 @@ static bx_bool ioapic_write(bx_phy_address a20addr, unsigned len, void *data, vo
   }
 
   if (len == 4) {
-    theIOAPIC->write_aligned(a20addr, *((Bit32u*) data));
+    theIOAPIC->write_aligned(a20addr, *((uint32_t*) data));
   }
   else {
     if ((a20addr & 0xff) != 0)
       BX_PANIC(("I/O apic write with len=%d (should be 4) at address 0x" FMT_PHY_ADDRX, len, a20addr));
 
     if (len == 2)
-      theIOAPIC->write_aligned(a20addr, (Bit32u) *((Bit16u*) data));
+      theIOAPIC->write_aligned(a20addr, (uint32_t) *((uint16_t*) data));
     else if (len == 1)
-      theIOAPIC->write_aligned(a20addr, (Bit32u) *((Bit8u*) data));
+      theIOAPIC->write_aligned(a20addr, (uint32_t) *((uint8_t*) data));
     else
       BX_PANIC(("Unsupported I/O APIC write at address 0x" FMT_PHY_ADDRX ", len=%d", a20addr, len));
   }
@@ -155,7 +155,7 @@ void bx_ioapic_c::reset(unsigned type)
   ioregsel = 0;
 }
 
-Bit32u bx_ioapic_c::read_aligned(bx_phy_address address)
+uint32_t bx_ioapic_c::read_aligned(bx_phy_address address)
 {
   BX_DEBUG(("IOAPIC: read aligned addr=0x" FMT_PHY_ADDRX, address));
   address &= 0xff;
@@ -167,7 +167,7 @@ Bit32u bx_ioapic_c::read_aligned(bx_phy_address address)
       BX_PANIC(("IOAPIC: read from unsupported address"));
   }
 
-  Bit32u data = 0;
+  uint32_t data = 0;
 
   // only reached when reading data register
   switch (ioregsel) {
@@ -193,7 +193,7 @@ Bit32u bx_ioapic_c::read_aligned(bx_phy_address address)
   return data;
 }
 
-void bx_ioapic_c::write_aligned(bx_phy_address address, Bit32u value)
+void bx_ioapic_c::write_aligned(bx_phy_address address, uint32_t value)
 {
   BX_DEBUG(("IOAPIC: write aligned addr=%08x, data=%08x", (unsigned) address, value));
   address &= 0xff;
@@ -208,7 +208,7 @@ void bx_ioapic_c::write_aligned(bx_phy_address address, Bit32u value)
   switch (ioregsel) {
     case 0x00: // set APIC ID
       {
-        Bit8u newid = (value >> 24) & apic_id_mask;
+        uint8_t newid = (value >> 24) & apic_id_mask;
         BX_INFO(("IOAPIC: setting id to 0x%x", newid));
         set_id (newid);
         return;
@@ -235,14 +235,14 @@ void bx_ioapic_c::write_aligned(bx_phy_address address, Bit32u value)
   }
 }
 
-void bx_ioapic_c::set_irq_level(Bit8u int_in, bx_bool level)
+void bx_ioapic_c::set_irq_level(uint8_t int_in, bx_bool level)
 {
   if (int_in == 0) { // timer connected to pin #2
     int_in = 2;
   }
   BX_DEBUG(("set_irq_level(): INTIN%d: level=%d", int_in, level));
   if (int_in < BX_IOAPIC_NUM_PINS) {
-    Bit32u bit = 1<<int_in;
+    uint32_t bit = 1<<int_in;
     if ((level<<int_in) != (intin & bit)) {
       bx_io_redirect_entry_t *entry = ioredtbl + int_in;
       if (entry->trigger_mode()) {
@@ -269,7 +269,7 @@ void bx_ioapic_c::set_irq_level(Bit8u int_in, bx_bool level)
   }
 }
 
-void bx_ioapic_c::receive_eoi(Bit8u vector)
+void bx_ioapic_c::receive_eoi(uint8_t vector)
 {
   BX_DEBUG(("IOAPIC: received EOI for vector %d", vector));
 }
@@ -277,11 +277,11 @@ void bx_ioapic_c::receive_eoi(Bit8u vector)
 void bx_ioapic_c::service_ioapic()
 {
   static unsigned int stuck = 0;
-  Bit8u vector = 0;
+  uint8_t vector = 0;
   // look in IRR and deliver any interrupts that are not masked.
   BX_DEBUG(("IOAPIC: servicing"));
   for (unsigned bit=0; bit < BX_IOAPIC_NUM_PINS; bit++) {
-    Bit32u mask = 1<<bit;
+    uint32_t mask = 1<<bit;
     if (irr & mask) {
       bx_io_redirect_entry_t *entry = ioredtbl + bit;
       if (! entry->is_masked()) {
