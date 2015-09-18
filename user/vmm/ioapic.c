@@ -34,13 +34,6 @@ int debug_ioapic = 1;
 	if (debug_ioapic) { fprintf(stderr, "ioapic: " fmt , ## __VA_ARGS__); }
 
 
-struct ioapicinfo {
-	int state; // not used yet. */
-	int id;
-	uint64_t ioapicbase;
-	uint64_t ioioapicbase;
-};
-
 static struct ioapicinfo ioapicinfo;
 
 enum {

@@ -34,13 +34,6 @@ int debug_apic = 1;
 	if (debug_apic) { fprintf(stderr, "apic: " fmt , ## __VA_ARGS__); }
 
 
-struct apicinfo {
-	int state; // not used yet. */
-	int id;
-	uint64_t apicbase;
-	uint64_t ioapicbase;
-};
-
 static struct apicinfo apicinfo;
 
 enum {

@@ -16,15 +16,27 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>
  */
-#include "qemu/thread.h"
-#include "hw/i386/apic_internal.h"
-#include "hw/i386/apic.h"
-#include "hw/i386/ioapic.h"
-#include "hw/pci/msi.h"
-#include "qemu/host-utils.h"
-#include "trace.h"
-#include "hw/i386/pc.h"
-#include "hw/i386/apic-msidef.h"
+#include <stdio.h>
+#include <sys/types.h>
+#include <pthread.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <parlib/arch/arch.h>
+#include <parlib/ros_debug.h>
+#include <unistd.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/uio.h>
+#include <stdint.h>
+#include <err.h>
+#include <sys/mman.h>
+#include <ros/vmm.h>
+#include <vmm/virtio.h>
+#include <vmm/virtio_mmio.h>
+#include <vmm/virtio_ids.h>
+#include <vmm/virtio_config.h>
+#include <vmm/pic.h>
 
 #define MAX_APIC_WORDS 8
 
@@ -32,17 +44,117 @@
 #define SYNC_TO_VAPIC                   0x2
 #define SYNC_ISR_IRR_TO_VAPIC           0x4
 
-static APICCommonState *local_apics[MAX_APICS + 1];
+/* defines that can safely hide out here. */
+/* i386-specific interrupt pending bits.  */
+// no idea. 
+#define CPU_INTERRUPT_POLL      1
+#define CPU_INTERRUPT_SMI       2
+#define CPU_INTERRUPT_NMI       3
+#define CPU_INTERRUPT_MCE       4
+#define CPU_INTERRUPT_VIRQ      0
+#define CPU_INTERRUPT_SIPI      1
+#define CPU_INTERRUPT_TPR       2
+#define CPU_INTERRUPT_HARD      8
+/* Use a clearer name for this.  */
+#define CPU_INTERRUPT_INIT      0xff
 
-static void apic_set_irq(APICCommonState *s, int vector_num, int trigger_mode);
-static void apic_update_irq(APICCommonState *s);
+/**/
+
+static struct apic *local_apics[MAX_APICS + 1];
+
+static void apic_set_irq(struct apic *s, int vector_num, int trigger_mode);
+static void apic_update_irq(struct apic *s);
 static void apic_get_delivery_bitmask(uint32_t *deliver_bitmask,
                                       uint8_t dest, uint8_t dest_mode);
+extern int debug_apic;
 
+/**
+ * ctz32 - count trailing zeros in a 32-bit value.
+ * @val: The value to search
+ *
+ * Returns 32 if the value is zero.  Note that the GCC builtin is
+ * undefined if the value is zero.
+ */
+static inline int ctz32(uint32_t val)
+{
+    return val ? __builtin_ctz(val) : 32;
+#if 0
+    /* Binary search for the trailing one bit.  */
+    int cnt;
+
+    cnt = 0;
+    if (!(val & 0x0000FFFFUL)) {
+        cnt += 16;
+        val >>= 16;
+    }
+    if (!(val & 0x000000FFUL)) {
+        cnt += 8;
+        val >>= 8;
+    }
+    if (!(val & 0x0000000FUL)) {
+        cnt += 4;
+        val >>= 4;
+    }
+    if (!(val & 0x00000003UL)) {
+        cnt += 2;
+        val >>= 2;
+    }
+    if (!(val & 0x00000001UL)) {
+        cnt++;
+        val >>= 1;
+    }
+    if (!(val & 0x00000001UL)) {
+        cnt++;
+    }
+
+    return cnt;
+#endif
+}
+
+/**
+ * clz32 - count leading zeros in a 32-bit value.
+ * @val: The value to search
+ *
+ * Returns 32 if the value is zero.  Note that the GCC builtin is
+ * undefined if the value is zero.
+ */
+static inline int clz32(uint32_t val)
+{
+    return val ? __builtin_clz(val) : 32;
+#if 0
+    /* Binary search for the leading one bit.  */
+    int cnt = 0;
+
+    if (!(val & 0xFFFF0000U)) {
+        cnt += 16;
+        val <<= 16;
+    }
+    if (!(val & 0xFF000000U)) {
+        cnt += 8;
+        val <<= 8;
+    }
+    if (!(val & 0xF0000000U)) {
+        cnt += 4;
+        val <<= 4;
+    }
+    if (!(val & 0xC0000000U)) {
+        cnt += 2;
+        val <<= 2;
+    }
+    if (!(val & 0x80000000U)) {
+        cnt++;
+        val <<= 1;
+    }
+    if (!(val & 0x80000000U)) {
+        cnt++;
+    }
+    return cnt;
+#endif
+}
 /* Find first bit starting from msb */
 static int apic_fls_bit(uint32_t value)
 {
-    return 31 - clz32(value);
+	return 31 - clz32(value);
 }
 
 /* Find first bit starting from lsb */
@@ -87,7 +199,15 @@ static int get_highest_priority_int(uint32_t *tab)
     return -1;
 }
 
-static void apic_sync_vapic(APICCommonState *s, int sync_type)
+#define CPU(x) (0)
+void cpu_interrupt(int cpu, int irq)
+{
+	fprintf(stderr, "CPU INTERRUPT: %d, %d\n", cpu, irq);
+}
+
+// er, what is this?
+#if 0
+static void apic_sync_vapic(struct apic *s, int sync_type)
 {
     VAPICState vapic_state;
     size_t length;
@@ -135,17 +255,18 @@ static void apic_sync_vapic(APICCommonState *s, int sync_type)
     }
 }
 
-static void apic_vapic_base_update(APICCommonState *s)
+static void apic_vapic_base_update(apic *s)
 {
     apic_sync_vapic(s, SYNC_TO_VAPIC);
 }
-
-static void apic_local_deliver(APICCommonState *s, int vector)
+#endif
+static void apic_local_deliver(struct apic *s, int vector)
 {
     uint32_t lvt = s->lvt[vector];
     int trigger_mode;
 
-    trace_apic_local_deliver(vector, (lvt >> 8) & 7);
+    if (debug_apic) {
+	    fprintf(stderr, "Deliver vector 0x%x lvt 0x%x\n", vector, (lvt >> 8) & 7);
 
     if (lvt & APIC_LVT_MASKED)
         return;
@@ -172,29 +293,27 @@ static void apic_local_deliver(APICCommonState *s, int vector)
     }
 }
 
-void apic_deliver_pic_intr(DeviceState *dev, int level)
+void apic_deliver_pic_intr(struct apic *s, int level)
 {
-    APICCommonState *s = APIC_COMMON(dev);
-
-    if (level) {
-        apic_local_deliver(s, APIC_LVT_LINT0);
-    } else {
-        uint32_t lvt = s->lvt[APIC_LVT_LINT0];
-
-        switch ((lvt >> 8) & 7) {
-        case APIC_DM_FIXED:
-            if (!(lvt & APIC_LVT_LEVEL_TRIGGER))
-                break;
-            apic_reset_bit(s->irr, lvt & 0xff);
-            /* fall through */
-        case APIC_DM_EXTINT:
-            apic_update_irq(s);
-            break;
-        }
-    }
+	if (level) {
+		apic_local_deliver(s, APIC_LVT_LINT0);
+	} else {
+		uint32_t lvt = s->lvt[APIC_LVT_LINT0];
+		
+		switch ((lvt >> 8) & 7) {
+		case APIC_DM_FIXED:
+			if (!(lvt & APIC_LVT_LEVEL_TRIGGER))
+				break;
+			apic_reset_bit(s->irr, lvt & 0xff);
+			/* fall through */
+		case APIC_DM_EXTINT:
+			apic_update_irq(s);
+			break;
+		}
+	}
 }
 
-static void apic_external_nmi(APICCommonState *s)
+void apic_external_nmi(struct apic *s)
 {
     apic_local_deliver(s, APIC_LVT_LINT1);
 }
@@ -217,11 +336,11 @@ static void apic_external_nmi(APICCommonState *s)
     }\
 }
 
-static void apic_bus_deliver(const uint32_t *deliver_bitmask,
+void apic_bus_deliver(const uint32_t *deliver_bitmask,
                              uint8_t delivery_mode, uint8_t vector_num,
                              uint8_t trigger_mode)
 {
-    APICCommonState *apic_iter;
+    struct apic *apic_iter;
 
     switch (delivery_mode) {
         case APIC_DM_LOWPRI:
@@ -284,26 +403,31 @@ void apic_deliver_irq(uint8_t dest, uint8_t dest_mode, uint8_t delivery_mode,
 {
     uint32_t deliver_bitmask[MAX_APIC_WORDS];
 
-    trace_apic_deliver_irq(dest, dest_mode, delivery_mode, vector_num,
-                           trigger_mode);
-
+    if (debug_apic) {
+	    fprintf(stderr, "apic_deliver_irq: dest 0x%x mode 0x%x delivery mode 0x%x vector_num 0x%x trigger_mode 0x%x\n", 
+		    dest, dest_mode, delivery_mode, vector_num, trigger_mode);
+    }
     apic_get_delivery_bitmask(deliver_bitmask, dest, dest_mode);
     apic_bus_deliver(deliver_bitmask, delivery_mode, vector_num, trigger_mode);
 }
 
-static void apic_set_base(APICCommonState *s, uint64_t val)
+void apic_set_base(struct apic *s, uint64_t val)
 {
-    s->apicbase = (val & 0xfffff000) |
-        (s->apicbase & (MSR_IA32_APICBASE_BSP | MSR_IA32_APICBASE_ENABLE));
-    /* if disabled, cannot be enabled again */
-    if (!(val & MSR_IA32_APICBASE_ENABLE)) {
-        s->apicbase &= ~MSR_IA32_APICBASE_ENABLE;
-        cpu_clear_apic_feature(&s->cpu->env);
-        s->spurious_vec &= ~APIC_SV_ENABLE;
-    }
+	// I don't think we need this level of emulation fidelity. We always have an apic.
+	s->apicbase = val;
+#if 0
+	s->apicbase = (val & 0xfffff000) |
+		(s->apicbase & (MSR_IA32_APICBASE_BSP | MSR_IA32_APICBASE_ENABLE));
+	/* if disabled, cannot be enabled again */
+	if (!(val & MSR_IA32_APICBASE_ENABLE)) {
+		s->apicbase &= ~MSR_IA32_APICBASE_ENABLE;
+		cpu_clear_apic_feature(&s->cpu->env);
+		s->spurious_vec &= ~APIC_SV_ENABLE;
+	}
+#endif
 }
 
-static void apic_set_tpr(APICCommonState *s, uint8_t val)
+void apic_set_tpr(struct apic *s, uint8_t val)
 {
     /* Updates from cr8 are ignored while the VAPIC is active */
     if (!s->vapic_paddr) {
@@ -312,13 +436,14 @@ static void apic_set_tpr(APICCommonState *s, uint8_t val)
     }
 }
 
-static uint8_t apic_get_tpr(APICCommonState *s)
+uint8_t apic_get_tpr(struct apic *s)
 {
-    apic_sync_vapic(s, SYNC_FROM_VAPIC);
+	// what?
+	//apic_sync_vapic(s, SYNC_FROM_VAPIC);
     return s->tpr >> 4;
 }
 
-static int apic_get_ppr(APICCommonState *s)
+int apic_get_ppr(struct apic *s)
 {
     int tpr, isrv, ppr;
 
@@ -334,7 +459,7 @@ static int apic_get_ppr(APICCommonState *s)
     return ppr;
 }
 
-static int apic_get_arb_pri(APICCommonState *s)
+int apic_get_arb_pri(struct apic *s)
 {
     /* XXX: arbitration */
     return 0;
@@ -346,7 +471,7 @@ static int apic_get_arb_pri(APICCommonState *s)
  * 0  - no interrupt,
  * >0 - interrupt number
  */
-static int apic_irq_pending(APICCommonState *s)
+int apic_irq_pending(struct apic *s)
 {
     int irrv, ppr;
 
@@ -367,10 +492,11 @@ static int apic_irq_pending(APICCommonState *s)
 }
 
 /* signal the CPU if an irq is pending */
-static void apic_update_irq(APICCommonState *s)
+void apic_update_irq(struct apic *s)
 {
+	// TODO
+#if 0
     CPUState *cpu;
-    DeviceState *dev = (DeviceState *)s;
 
     cpu = CPU(s->cpu);
     if (!qemu_cpu_is_self(cpu)) {
@@ -380,39 +506,40 @@ static void apic_update_irq(APICCommonState *s)
     } else if (!apic_accept_pic_intr(dev) || !pic_get_output(isa_pic)) {
         cpu_reset_interrupt(cpu, CPU_INTERRUPT_HARD);
     }
+#endif
 }
 
-void apic_poll_irq(DeviceState *dev)
+void apic_poll_irq(struct apic *s)
 {
-    APICCommonState *s = APIC_COMMON(dev);
-
-    apic_sync_vapic(s, SYNC_FROM_VAPIC);
-    apic_update_irq(s);
+	//apic_sync_vapic(s, SYNC_FROM_VAPIC);
+	apic_update_irq(s);
 }
 
-static void apic_set_irq(APICCommonState *s, int vector_num, int trigger_mode)
+void apic_set_irq(struct apic *s, int vector_num, int trigger_mode)
 {
-    apic_report_irq_delivered(!apic_get_bit(s->irr, vector_num));
-
-    apic_set_bit(s->irr, vector_num);
-    if (trigger_mode)
-        apic_set_bit(s->tmr, vector_num);
-    else
-        apic_reset_bit(s->tmr, vector_num);
-    if (s->vapic_paddr) {
-        apic_sync_vapic(s, SYNC_ISR_IRR_TO_VAPIC);
-        /*
-         * The vcpu thread needs to see the new IRR before we pull its current
-         * TPR value. That way, if we miss a lowering of the TRP, the guest
-         * has the chance to notice the new IRR and poll for IRQs on its own.
-         */
-        smp_wmb();
-        apic_sync_vapic(s, SYNC_FROM_VAPIC);
-    }
-    apic_update_irq(s);
+	if (debug_apic)
+		fprintf(stderr, "APIC: delivered 0x%x\n", !apic_get_bit(s->irr, vector_num));
+	
+	apic_set_bit(s->irr, vector_num);
+	if (trigger_mode)
+		apic_set_bit(s->tmr, vector_num);
+	else
+		apic_reset_bit(s->tmr, vector_num);
+	if (s->vapic_paddr) {
+		// What is this again?
+		//apic_sync_vapic(s, SYNC_ISR_IRR_TO_VAPIC);
+		/*
+		 * The vcpu thread needs to see the new IRR before we pull its current
+		 * TPR value. That way, if we miss a lowering of the TRP, the guest
+		 * has the chance to notice the new IRR and poll for IRQs on its own.
+		 */
+		//smp_wmb();
+		//apic_sync_vapic(s, SYNC_FROM_VAPIC);
+	}
+	apic_update_irq(s);
 }
 
-static void apic_eoi(APICCommonState *s)
+void apic_eoi(struct apic *s)
 {
     int isrv;
     isrv = get_highest_priority_int(s->isr);
@@ -422,13 +549,13 @@ static void apic_eoi(APICCommonState *s)
     if (!(s->spurious_vec & APIC_SV_DIRECTED_IO) && apic_get_bit(s->tmr, isrv)) {
         ioapic_eoi_broadcast(isrv);
     }
-    apic_sync_vapic(s, SYNC_FROM_VAPIC | SYNC_TO_VAPIC);
+    //apic_sync_vapic(s, SYNC_FROM_VAPIC | SYNC_TO_VAPIC);
     apic_update_irq(s);
 }
 
-static int apic_find_dest(uint8_t dest)
+int apic_find_dest(uint8_t dest)
 {
-    APICCommonState *apic = local_apics[dest];
+    struct apic *apic = local_apics[dest];
     int i;
 
     if (apic && apic->id == dest)
@@ -445,10 +572,10 @@ static int apic_find_dest(uint8_t dest)
     return -1;
 }
 
-static void apic_get_delivery_bitmask(uint32_t *deliver_bitmask,
+void apic_get_delivery_bitmask(uint32_t *deliver_bitmask,
                                       uint8_t dest, uint8_t dest_mode)
 {
-    APICCommonState *apic_iter;
+    struct apic *apic_iter;
     int i;
 
     if (dest_mode == 0) {
@@ -482,32 +609,32 @@ static void apic_get_delivery_bitmask(uint32_t *deliver_bitmask,
     }
 }
 
-static void apic_startup(APICCommonState *s, int vector_num)
+void apic_startup(struct apic *s, int vector_num)
 {
     s->sipi_vector = vector_num;
     cpu_interrupt(CPU(s->cpu), CPU_INTERRUPT_SIPI);
 }
 
-void apic_sipi(DeviceState *dev)
+// laters. 
+void apic_sipi(struct apic *s)
 {
-    APICCommonState *s = APIC_COMMON(dev);
-
+#if 0
     cpu_reset_interrupt(CPU(s->cpu), CPU_INTERRUPT_SIPI);
 
     if (!s->wait_for_sipi)
         return;
     cpu_x86_load_seg_cache_sipi(s->cpu, s->sipi_vector);
     s->wait_for_sipi = 0;
+#endif
 }
 
-static void apic_deliver(DeviceState *dev, uint8_t dest, uint8_t dest_mode,
+void apic_deliver(struct apic *s, uint8_t dest, uint8_t dest_mode,
                          uint8_t delivery_mode, uint8_t vector_num,
                          uint8_t trigger_mode)
 {
-    APICCommonState *s = APIC_COMMON(dev);
     uint32_t deliver_bitmask[MAX_APIC_WORDS];
     int dest_shorthand = (s->icr[0] >> 18) & 3;
-    APICCommonState *apic_iter;
+    static struct apic *apic_iter;
 
     switch (dest_shorthand) {
     case 0:
@@ -548,20 +675,19 @@ static void apic_deliver(DeviceState *dev, uint8_t dest, uint8_t dest_mode,
     apic_bus_deliver(deliver_bitmask, delivery_mode, vector_num, trigger_mode);
 }
 
-static bool apic_check_pic(APICCommonState *s)
+// not clear we need this.
+#if 0
+bool apic_check_pic(struct apic *s)
 {
-    DeviceState *dev = (DeviceState *)s;
-
-    if (!apic_accept_pic_intr(dev) || !pic_get_output(isa_pic)) {
+    if (!apic_accept_pic_intr(s) || !pic_get_output(isa_pic)) {
         return false;
     }
-    apic_deliver_pic_intr(dev, 1);
+    apic_deliver_pic_intr(s, 1);
     return true;
 }
-
-int apic_get_interrupt(DeviceState *dev)
+#endif
+int apic_get_interrupt(struct apic *s)
 {
-    APICCommonState *s = APIC_COMMON(dev);
     int intno;
 
     /* if the APIC is installed or enabled, we let the 8259 handle the
@@ -593,9 +719,9 @@ int apic_get_interrupt(DeviceState *dev)
     return intno;
 }
 
-int apic_accept_pic_intr(DeviceState *dev)
+int apic_accept_pic_intr(struct apic *s)
 {
-    APICCommonState *s = APIC_COMMON(dev);
+    struct apic *s = APIC_COMMON(dev);
     uint32_t lvt0;
 
     if (!s)
@@ -610,7 +736,7 @@ int apic_accept_pic_intr(DeviceState *dev)
     return 0;
 }
 
-static uint32_t apic_get_current_count(APICCommonState *s)
+uint32_t apic_get_current_count(struct apic *s)
 {
     int64_t d;
     uint32_t val;
@@ -628,7 +754,7 @@ static uint32_t apic_get_current_count(APICCommonState *s)
     return val;
 }
 
-static void apic_timer_update(APICCommonState *s, int64_t current_time)
+void apic_timer_update(apic *s, int64_t current_time)
 {
     if (apic_next_timer(s, current_time)) {
         timer_mod(s->timer, s->next_time);
@@ -637,36 +763,36 @@ static void apic_timer_update(APICCommonState *s, int64_t current_time)
     }
 }
 
-static void apic_timer(void *opaque)
+void apic_timer(void *opaque)
 {
-    APICCommonState *s = opaque;
+    struct apic *s = opaque;
 
     apic_local_deliver(s, APIC_LVT_TIMER);
     apic_timer_update(s, s->next_time);
 }
 
-static uint32_t apic_mem_readb(void *opaque, hwaddr addr)
+uint32_t apic_mem_readb(void *opaque, uint64_t addr)
 {
     return 0;
 }
 
-static uint32_t apic_mem_readw(void *opaque, hwaddr addr)
+uint32_t apic_mem_readw(void *opaque, uint64_t addr)
 {
     return 0;
 }
 
-static void apic_mem_writeb(void *opaque, hwaddr addr, uint32_t val)
+void apic_mem_writeb(void *opaque, uint64_t addr, uint32_t val)
 {
 }
 
-static void apic_mem_writew(void *opaque, hwaddr addr, uint32_t val)
+void apic_mem_writew(void *opaque, uint64_t addr, uint32_t val)
 {
 }
 
-static uint32_t apic_mem_readl(void *opaque, hwaddr addr)
+uint32_t apic_mem_readl(void *opaque, uint64_t addr)
 {
-    DeviceState *dev;
-    APICCommonState *s;
+    struct apic *s;
+    struct apic *s;
     uint32_t val;
     int index;
 
@@ -743,11 +869,12 @@ static uint32_t apic_mem_readl(void *opaque, hwaddr addr)
         val = 0;
         break;
     }
-    trace_apic_mem_readl(addr, val);
+    if (debug_apic)
+	    fprintf(stderr, "APIC read 0x%x 0x%x\n", addr, val);
     return val;
 }
 
-static void apic_send_msi(hwaddr addr, uint32_t data)
+void apic_send_msi(uint64_t addr, uint32_t data)
 {
     uint8_t dest = (addr & MSI_ADDR_DEST_ID_MASK) >> MSI_ADDR_DEST_ID_SHIFT;
     uint8_t vector = (data & MSI_DATA_VECTOR_MASK) >> MSI_DATA_VECTOR_SHIFT;
@@ -758,10 +885,9 @@ static void apic_send_msi(hwaddr addr, uint32_t data)
     apic_deliver_irq(dest, dest_mode, delivery, vector, trigger_mode);
 }
 
-static void apic_mem_writel(void *opaque, hwaddr addr, uint32_t val)
+void apic_mem_writel(void *opaque, uint64_t addr, uint32_t val)
 {
-    DeviceState *dev;
-    APICCommonState *s;
+    struct apic *s;
     int index = (addr >> 4) & 0xff;
     if (addr > 0xfff || !index) {
         /* MSI and MMIO APIC are at the same memory location,
@@ -779,7 +905,8 @@ static void apic_mem_writel(void *opaque, hwaddr addr, uint32_t val)
     }
     s = APIC_COMMON(dev);
 
-    trace_apic_mem_writel(addr, val);
+    if (debug_apic)
+	    fprintf(stderr, "APIC write 0x%x 0x%x\n", addr, val);
 
     switch(index) {
     case 0x02:
@@ -857,65 +984,11 @@ static void apic_mem_writel(void *opaque, hwaddr addr, uint32_t val)
     }
 }
 
-static void apic_pre_save(APICCommonState *s)
+void apic_setup(struct apic *s)
 {
-    apic_sync_vapic(s, SYNC_FROM_VAPIC);
+	//s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, apic_timer, s);
+	local_apics[s->idx] = s;
+	
+	msi_supported = true;
 }
 
-static void apic_post_load(APICCommonState *s)
-{
-    if (s->timer_expiry != -1) {
-        timer_mod(s->timer, s->timer_expiry);
-    } else {
-        timer_del(s->timer);
-    }
-}
-
-static const MemoryRegionOps apic_io_ops = {
-    .old_mmio = {
-        .read = { apic_mem_readb, apic_mem_readw, apic_mem_readl, },
-        .write = { apic_mem_writeb, apic_mem_writew, apic_mem_writel, },
-    },
-    .endianness = DEVICE_NATIVE_ENDIAN,
-};
-
-static void apic_realize(DeviceState *dev, Error **errp)
-{
-    APICCommonState *s = APIC_COMMON(dev);
-
-    memory_region_init_io(&s->io_memory, OBJECT(s), &apic_io_ops, s, "apic-msi",
-                          APIC_SPACE_SIZE);
-
-    s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, apic_timer, s);
-    local_apics[s->idx] = s;
-
-    msi_supported = true;
-}
-
-static void apic_class_init(ObjectClass *klass, void *data)
-{
-    APICCommonClass *k = APIC_COMMON_CLASS(klass);
-
-    k->realize = apic_realize;
-    k->set_base = apic_set_base;
-    k->set_tpr = apic_set_tpr;
-    k->get_tpr = apic_get_tpr;
-    k->vapic_base_update = apic_vapic_base_update;
-    k->external_nmi = apic_external_nmi;
-    k->pre_save = apic_pre_save;
-    k->post_load = apic_post_load;
-}
-
-static const TypeInfo apic_info = {
-    .name          = "apic",
-    .instance_size = sizeof(APICCommonState),
-    .parent        = TYPE_APIC_COMMON,
-    .class_init    = apic_class_init,
-};
-
-static void apic_register_types(void)
-{
-    type_register_static(&apic_info);
-}
-
-type_init(apic_register_types)

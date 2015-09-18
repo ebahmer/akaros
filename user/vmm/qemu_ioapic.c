@@ -20,26 +20,19 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "hw/hw.h"
-#include "hw/i386/pc.h"
-#include "hw/i386/ioapic.h"
-#include "hw/i386/ioapic_internal.h"
+#include <stdio.h>
+#include <vmm/pic.h>
 
-//#define DEBUG_IOAPIC
-
-#ifdef DEBUG_IOAPIC
+int debug_apic = 1;
 #define DPRINTF(fmt, ...)                                       \
-    do { printf("ioapic: " fmt , ## __VA_ARGS__); } while (0)
-#else
-#define DPRINTF(fmt, ...)
-#endif
+	do { id (debug_apic) printf("ioapic: " fmt , ## __VA_ARGS__); } while (0)
 
-static IOAPICCommonState *ioapics[MAX_IOAPICS];
+static struct ioapic *ioapics[MAX_IOAPICS];
 
 /* global variable from ioapic_common.c */
 extern int ioapic_no;
 
-static void ioapic_service(IOAPICCommonState *s)
+static void ioapic_service(struct ioapic *s)
 {
     uint8_t i;
     uint8_t trig_mode;
@@ -51,40 +44,40 @@ static void ioapic_service(IOAPICCommonState *s)
     uint8_t dest_mode;
 
     for (i = 0; i < IOAPIC_NUM_PINS; i++) {
-        mask = 1 << i;
-        if (s->irr & mask) {
-            entry = s->ioredtbl[i];
-            if (!(entry & IOAPIC_LVT_MASKED)) {
-                trig_mode = ((entry >> IOAPIC_LVT_TRIGGER_MODE_SHIFT) & 1);
-                dest = entry >> IOAPIC_LVT_DEST_SHIFT;
-                dest_mode = (entry >> IOAPIC_LVT_DEST_MODE_SHIFT) & 1;
-                delivery_mode =
-                    (entry >> IOAPIC_LVT_DELIV_MODE_SHIFT) & IOAPIC_DM_MASK;
-                if (trig_mode == IOAPIC_TRIGGER_EDGE) {
-                    s->irr &= ~mask;
-                } else {
-                    s->ioredtbl[i] |= IOAPIC_LVT_REMOTE_IRR;
-                }
-                if (delivery_mode == IOAPIC_DM_EXTINT) {
-                    vector = pic_read_irq(isa_pic);
-                } else {
-                    vector = entry & IOAPIC_VECTOR_MASK;
-                }
-                apic_deliver_irq(dest, dest_mode, delivery_mode,
-                                 vector, trig_mode);
-            }
-        }
+	    mask = 1 << i;
+	    if (s->irr & mask) {
+		    entry = s->ioredtbl[i];
+		    if (!(entry & IOAPIC_LVT_MASKED)) {
+			    trig_mode = ((entry >> IOAPIC_LVT_TRIGGER_MODE_SHIFT) & 1);
+			    dest = entry >> IOAPIC_LVT_DEST_SHIFT;
+			    dest_mode = (entry >> IOAPIC_LVT_DEST_MODE_SHIFT) & 1;
+			    delivery_mode =
+				    (entry >> IOAPIC_LVT_DELIV_MODE_SHIFT) & IOAPIC_DM_MASK;
+			    if (trig_mode == IOAPIC_TRIGGER_EDGE) {
+				    s->irr &= ~mask;
+			    } else {
+				    s->ioredtbl[i] |= IOAPIC_LVT_REMOTE_IRR;
+			    }
+			    if (delivery_mode == IOAPIC_DM_EXTINT) {
+				    vector = pic_read_irq(isa_pic);
+			    } else {
+				    vector = entry & IOAPIC_VECTOR_MASK;
+			    }
+			    apic_deliver_irq(dest, dest_mode, delivery_mode,
+					     vector, trig_mode);
+		    }
+	    }
     }
 }
 
-static void ioapic_set_irq(void *opaque, int vector, int level)
-{
-    IOAPICCommonState *s = opaque;
-
-    /* ISA IRQs map to GSI 1-1 except for IRQ0 which maps
-     * to GSI 2.  GSI maps to ioapic 1-1.  This is not
-     * the cleanest way of doing it but it should work. */
-
+			    static void ioapic_set_irq(void *opaque, int vector, int level)
+			    {
+				    struct ioapic *s = opaque;
+				    
+				    /* ISA IRQs map to GSI 1-1 except for IRQ0 which maps
+				     * to GSI 2.  GSI maps to ioapic 1-1.  This is not
+				     * the cleanest way of doing it but it should work. */
+				    
     DPRINTF("%s: %s vec %x\n", __func__, level ? "raise" : "lower", vector);
     if (vector == 0) {
         vector = 2;
@@ -115,7 +108,7 @@ static void ioapic_set_irq(void *opaque, int vector, int level)
 
 void ioapic_eoi_broadcast(int vector)
 {
-    IOAPICCommonState *s;
+    struct ioapic *s;
     uint64_t entry;
     int i, n;
 
@@ -138,9 +131,9 @@ void ioapic_eoi_broadcast(int vector)
 }
 
 static uint64_t
-ioapic_mem_read(void *opaque, hwaddr addr, unsigned int size)
+ioapic_mem_read(void *opaque, uint64_t addr, unsigned int size)
 {
-    IOAPICCommonState *s = opaque;
+    struct ioapic *s = opaque;
     int index;
     uint32_t val = 0;
 
@@ -180,10 +173,10 @@ ioapic_mem_read(void *opaque, hwaddr addr, unsigned int size)
 }
 
 static void
-ioapic_mem_write(void *opaque, hwaddr addr, uint64_t val,
+ioapic_mem_write(void *opaque, uint64_t addr, uint64_t val,
                  unsigned int size)
 {
-    IOAPICCommonState *s = opaque;
+    struct ioapic *s = opaque;
     int index;
 
     switch (addr & 0xff) {
@@ -219,43 +212,8 @@ ioapic_mem_write(void *opaque, hwaddr addr, uint64_t val,
     }
 }
 
-static const MemoryRegionOps ioapic_io_ops = {
-    .read = ioapic_mem_read,
-    .write = ioapic_mem_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-};
-
-static void ioapic_realize(DeviceState *dev, Error **errp)
+			static void ioapic_realize(struct ioapic *s)
 {
-    IOAPICCommonState *s = IOAPIC_COMMON(dev);
-
-    memory_region_init_io(&s->io_memory, OBJECT(s), &ioapic_io_ops, s,
-                          "ioapic", 0x1000);
-
-    qdev_init_gpio_in(dev, ioapic_set_irq, IOAPIC_NUM_PINS);
-
     ioapics[ioapic_no] = s;
 }
 
-static void ioapic_class_init(ObjectClass *klass, void *data)
-{
-    IOAPICCommonClass *k = IOAPIC_COMMON_CLASS(klass);
-    DeviceClass *dc = DEVICE_CLASS(klass);
-
-    k->realize = ioapic_realize;
-    dc->reset = ioapic_reset_common;
-}
-
-static const TypeInfo ioapic_info = {
-    .name          = "ioapic",
-    .parent        = TYPE_IOAPIC_COMMON,
-    .instance_size = sizeof(IOAPICCommonState),
-    .class_init    = ioapic_class_init,
-};
-
-static void ioapic_register_types(void)
-{
-    type_register_static(&ioapic_info);
-}
-
-type_init(ioapic_register_types)

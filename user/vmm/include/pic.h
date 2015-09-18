@@ -87,60 +87,20 @@ void ioapic_eoi_broadcast(int vector);
 
 #define IOAPIC_VER_ENTRIES_SHIFT        16
 
-typedef struct IOAPICCommonState IOAPICCommonState;
-
-#define TYPE_IOAPIC_COMMON "ioapic-common"
-#define IOAPIC_COMMON(obj) \
-     OBJECT_CHECK(IOAPICCommonState, (obj), TYPE_IOAPIC_COMMON)
-#define IOAPIC_COMMON_CLASS(klass) \
-     OBJECT_CLASS_CHECK(IOAPICCommonClass, (klass), TYPE_IOAPIC_COMMON)
-#define IOAPIC_COMMON_GET_CLASS(obj) \
-     OBJECT_GET_CLASS(IOAPICCommonClass, (obj), TYPE_IOAPIC_COMMON)
-
-typedef struct IOAPICCommonClass {
-    SysBusDeviceClass parent_class;
-
-    DeviceRealize realize;
-    void (*pre_save)(IOAPICCommonState *s);
-    void (*post_load)(IOAPICCommonState *s);
-} IOAPICCommonClass;
-
-struct IOAPICCommonState {
-    SysBusDevice busdev;
-    MemoryRegion io_memory;
-    uint8_t id;
-    uint8_t ioregsel;
-    uint32_t irr;
-    uint64_t ioredtbl[IOAPIC_NUM_PINS];
+struct ioapic {
+	uint64_t ioapicbase;
+	uint8_t id;
+	uint8_t ioregsel;
+	uint32_t irr;
+	uint64_t ioredtbl[IOAPIC_NUM_PINS];
 };
 
-void ioapic_reset_common(DeviceState *dev);
+void ioapic_reset_common(struct ioapic *);
 
 // APIC
-/* apic.c */
-void apic_deliver_irq(uint8_t dest, uint8_t dest_mode, uint8_t delivery_mode,
-                      uint8_t vector_num, uint8_t trigger_mode);
-int apic_accept_pic_intr(DeviceState *s);
-void apic_deliver_pic_intr(DeviceState *s, int level);
-void apic_deliver_nmi(DeviceState *d);
-int apic_get_interrupt(DeviceState *s);
-void apic_reset_irq_delivered(void);
-int apic_get_irq_delivered(void);
-void cpu_set_apic_base(DeviceState *s, uint64_t val);
-uint64_t cpu_get_apic_base(DeviceState *s);
-void cpu_set_apic_tpr(DeviceState *s, uint8_t val);
-uint8_t cpu_get_apic_tpr(DeviceState *s);
-void apic_init_reset(DeviceState *s);
-void apic_sipi(DeviceState *s);
-void apic_handle_tpr_access_report(DeviceState *d, target_ulong ip,
-                                   TPRAccess access);
-void apic_poll_irq(DeviceState *d);
-void apic_designate_bsp(DeviceState *d, bool bsp);
-
-/* pc.c */
-DeviceState *cpu_get_current_apic(void);
-
 /* cpu.c */
+// TODO
+typedef int X86CPU;
 bool cpu_is_bsp(X86CPU *cpu);
 
 /*
@@ -162,13 +122,6 @@ bool cpu_is_bsp(X86CPU *cpu);
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>
  */
-#ifndef QEMU_APIC_INTERNAL_H
-#define QEMU_APIC_INTERNAL_H
-
-#include "cpu.h"
-#include "exec/memory.h"
-#include "hw/cpu/icc_bus.h"
-#include "qemu/timer.h"
 
 /* APIC Local Vector Table */
 #define APIC_LVT_TIMER                  0
@@ -212,84 +165,95 @@ bool cpu_is_bsp(X86CPU *cpu);
 
 #define MAX_APICS 255
 
-typedef struct APICCommonState APICCommonState;
-
-#define TYPE_APIC_COMMON "apic-common"
-#define APIC_COMMON(obj) \
-     OBJECT_CHECK(APICCommonState, (obj), TYPE_APIC_COMMON)
-#define APIC_COMMON_CLASS(klass) \
-     OBJECT_CLASS_CHECK(APICCommonClass, (klass), TYPE_APIC_COMMON)
-#define APIC_COMMON_GET_CLASS(obj) \
-     OBJECT_GET_CLASS(APICCommonClass, (obj), TYPE_APIC_COMMON)
-
-typedef struct APICCommonClass
-{
-    ICCDeviceClass parent_class;
-
-    DeviceRealize realize;
-    void (*set_base)(APICCommonState *s, uint64_t val);
-    void (*set_tpr)(APICCommonState *s, uint8_t val);
-    uint8_t (*get_tpr)(APICCommonState *s);
-    void (*enable_tpr_reporting)(APICCommonState *s, bool enable);
-    void (*vapic_base_update)(APICCommonState *s);
-    void (*external_nmi)(APICCommonState *s);
-    void (*pre_save)(APICCommonState *s);
-    void (*post_load)(APICCommonState *s);
-    void (*reset)(APICCommonState *s);
-} APICCommonClass;
-
-struct APICCommonState {
-    ICCDevice busdev;
-
-    MemoryRegion io_memory;
-    X86CPU *cpu;
-    uint32_t apicbase;
-    uint8_t id;
-    uint8_t version;
-    uint8_t arb_id;
-    uint8_t tpr;
-    uint32_t spurious_vec;
-    uint8_t log_dest;
-    uint8_t dest_mode;
-    uint32_t isr[8];  /* in service register */
-    uint32_t tmr[8];  /* trigger mode register */
-    uint32_t irr[8]; /* interrupt request register */
-    uint32_t lvt[APIC_LVT_NB];
-    uint32_t esr; /* error register */
-    uint32_t icr[2];
-
-    uint32_t divide_conf;
-    int count_shift;
-    uint32_t initial_count;
-    int64_t initial_count_load_time;
-    int64_t next_time;
-    int idx;
-    QEMUTimer *timer;
-    int64_t timer_expiry;
-    int sipi_vector;
-    int wait_for_sipi;
-
-    uint32_t vapic_control;
-    DeviceState *vapic;
-    hwaddr vapic_paddr; /* note: persistence via kvmvapic */
+// TODO -- do we need this?
+struct X86CPU {
+	int env;
 };
 
-typedef struct VAPICState {
-    uint8_t tpr;
-    uint8_t isr;
-    uint8_t zero;
-    uint8_t irr;
-    uint8_t enabled;
-} QEMU_PACKED VAPICState;
+struct apic {
 
-extern bool apic_report_tpr_access;
+//    MemoryRegion io_memory;
+    X86CPU *cpu;
+	uint32_t apicbase;
+	uint32_t ioapicbase;
+	uint8_t id;
+	uint8_t version;
+	uint8_t arb_id;
+	uint8_t tpr;
+	uint32_t spurious_vec;
+	uint8_t log_dest;
+	uint8_t dest_mode;
+	uint32_t isr[8];  /* in service register */
+	uint32_t tmr[8];  /* trigger mode register */
+	uint32_t irr[8]; /* interrupt request register */
+	uint32_t lvt[APIC_LVT_NB];
+	uint32_t esr; /* error register */
+	uint32_t icr[2];
+	
+	uint32_t divide_conf;
+	int count_shift;
+	uint32_t initial_count;
+	int64_t initial_count_load_time;
+	int64_t next_time;
+	int idx;
+	//QEMUTimer *timer;
+	int64_t timer_expiry;
+	int sipi_vector;
+	int wait_for_sipi;
+	
+	uint32_t vapic_control;
+	struct ioapic *vapic;
+	uint64_t vapic_paddr; /* note: persistence via kvmvapic */
+};
+
+void set_base(struct apic *s, uint64_t val);
+void set_tpr(struct apic *s, uint8_t val);
+uint8_t get_tpr(struct apic *s);
+void enable_tpr_reporting(struct apic *s, bool enable);
+void vapic_base_update(struct apic *s);
+void external_nmi(struct apic *s);
+void reset(struct apic *s);
+
+
+typedef struct VAPICState {
+	uint8_t tpr;
+	uint8_t isr;
+	uint8_t zero;
+	uint8_t irr;
+	uint8_t enabled;
+} VAPICState;
+
+//extern bool apic_report_tpr_access;
 
 void apic_report_irq_delivered(int delivered);
-bool apic_next_timer(APICCommonState *s, int64_t current_time);
-void apic_enable_tpr_access_reporting(DeviceState *d, bool enable);
-void apic_enable_vapic(DeviceState *d, hwaddr paddr);
+bool apic_next_timer(struct apic *s, int64_t current_time);
+void apic_enable_tpr_access_reporting(struct ioapic *d, bool enable);
+void apic_enable_vapic(struct ioapic *d, uint64_t paddr);
 
-void vapic_report_tpr_access(DeviceState *dev, CPUState *cpu, target_ulong ip,
-                             TPRAccess access);
+//void vapic_report_tpr_access(struct ioapic *dev, CPUState *cpu, target_ulong ip,
+//                             TPRAccess access);
 
-#endif /* !QEMU_APIC_INTERNAL_H */
+
+/* apic.c */
+void apic_deliver_irq(uint8_t dest, uint8_t dest_mode, uint8_t delivery_mode,
+                      uint8_t vector_num, uint8_t trigger_mode);
+int apic_accept_pic_intr(struct apic *s);
+void apic_deliver_pic_intr(struct apic *s, int level);
+void apic_deliver_nmi(struct apic *d);
+int apic_get_interrupt(struct apic *s);
+void apic_reset_irq_delivered(void);
+int apic_get_irq_delivered(void);
+void cpu_set_apic_base(struct apic *s, uint64_t val);
+uint64_t cpu_get_apic_base(struct apic *s);
+void cpu_set_apic_tpr(struct apic *s, uint8_t val);
+uint8_t cpu_get_apic_tpr(struct apic *s);
+void apic_init_reset(struct apic *s);
+void apic_sipi(struct apic *s);
+//void apic_handle_tpr_access_report(struct ioapic *d, target_ulong ip,
+//                                   TPRAccess access);
+void apic_poll_irq(struct apic *d);
+void apic_designate_bsp(struct apic *d, bool bsp);
+
+/* pc.c */
+struct ioapic *cpu_get_current_apic(void);
+
