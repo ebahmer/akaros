@@ -132,11 +132,11 @@ static uint32_t ioapic_read(int ix, uint64_t offset)
 
 
 	if (offset == 0) {
-		DPRINTF("ioapic_read ix %x return reg %x 0x%x\n", ioapicregs[reg].name, reg);
+		DPRINTF("ioapic_read ix %x return 0x%x\n", ix, reg);
 		return reg;
 	}
 
-	DPRINTF("ioapic_read offset %s 0x%x\n", ioapicregs[reg].name, (int)reg);
+	DPRINTF("ioapic_read %s 0x%x\n", ioapicregs[reg].name, (int)reg);
 	if (! ioapicregs[reg].mode & 1) {
 		fprintf(stderr, "Attempt to read %s, which is %s\n", ioapicregs[reg].name,
 			ioapicregs[reg].mode == 0 ?  "reserved" : "writeonly");
@@ -176,11 +176,12 @@ static void ioapic_write(int ix, uint64_t offset, uint32_t value)
 	int index;
 
 	if (offset == 0) {
-		DPRINTF("ioapic_write ix %x set reg %x 0x%x\n", ioapicregs[reg].name, reg);
+		DPRINTF("ioapic_write ix %x set reg 0x%x\n", ix, value);
 		ioapic[ix].reg = value;
+		return;
 	}
 
-	DPRINTF("ioapic_write offset %s 0x%x\n", ioapicregs[reg].name, (int)reg);
+	DPRINTF("ioapic_write reg %s 0x%x\n", ioapicregs[reg].name, (int)reg);
 	if (! ioapicregs[reg].mode & 2) {
 		fprintf(stderr, "Attempt to write %s, which is %s\n", ioapicregs[reg].name,
 			ioapicregs[reg].mode == 0 ?  "reserved" : "readonly");
@@ -216,6 +217,7 @@ int do_ioapic(struct vmctl *v, uint64_t gpa, int destreg, uint64_t *regp, int st
 	int ix = 0;
 	uint32_t offset = gpa & 0xfffff;
 	/* basic sanity tests. */
+	DPRINTF("%s: %p 0x%x %p %s\n", __func__, (void *)gpa, destreg, regp, store ? "write" : "read");
 
 	if ((offset != 0) && (offset != 0x10)) {
 		DPRINTF("Bad register offset: 0x%x and has to be 0x0 or 0x10\n", offset);
