@@ -28,13 +28,23 @@
 #include <vmm/virtio_config.h>
 
 #define IOAPIC_CONFIG 0x100
+#define IOAPIC_NUM_PINS 24
 
 int debug_ioapic = 1;
+int apic_id_mask = 0xf0;
+
 #define DPRINTF(fmt, ...) \
 	if (debug_ioapic) { fprintf(stderr, "ioapic: " fmt , ## __VA_ARGS__); }
 
 
-static struct ioapicinfo ioapicinfo;
+struct ioapic {
+	int id;
+	int reg;
+	uint32_t arbid;
+	uint64_t value[256];
+};
+
+static struct ioapic ioapic[1];
 
 enum {
 	reserved,
@@ -46,7 +56,6 @@ enum {
 struct {
 	char *name;
 	int mode;
-	uint32_t value;
 } ioapicregs[256] = {
 [0x00] {.name = "ID", .mode =  readwrite},
 [0x01] {.name = "version", .mode =  readonly},
@@ -115,118 +124,109 @@ struct {
 [0x3F] {.name = "fix me", .mode =  reserved},
 };
 
-static uint32_t ioapic_read(uint64_t offset)
+static uint32_t ioapic_read(int ix, uint64_t offset)
 {
-
-	uint32_t low;
-  if((a20addr & ~0x3) != ((a20addr+len-1) & ~0x3)) {
-    BX_PANIC(("I/O APIC read at address 0x" FMT_PHY_ADDRX " spans 32-bit boundary !", a20addr));
-    return 1;
-  }
-  Bit32u value = theIOAPIC->read_aligned(a20addr & ~0x3);
-  if(len == 4) { // must be 32-bit aligned
-    *((Bit32u *)data) = value;
-    return 1;
-  }
-  // handle partial read, independent of endian-ness
-  value >>= (a20addr&3)*8;
-  if (len == 1)
-    *((Bit8u *) data) = value & 0xff;
-  else if (len == 2)
-    *((Bit16u *)data) = value & 0xffff;
-  else
-    BX_PANIC(("Unsupported I/O APIC read at address 0x" FMT_PHY_ADDRX ", len=%d", a20addr, len));
+	uint32_t ret = (uint32_t)-1;
+	uint32_t reg = ioapic[ix].reg;
+	int index;
 
 
-	DPRINTF("ioapic_read offset %s 0x%x\n", ioapicregs[offset].name, (int)offset);
+	if (offset == 0) {
+		DPRINTF("ioapic_read ix %x return reg %x 0x%x\n", ioapicregs[reg].name, reg);
+		return reg;
+	}
 
-	if (! ioapicregs[offset].mode & 1) {
-		fprintf(stderr, "Attempt to read %s, which is %s\n", ioapicregs[offset].name,
-			ioapicregs[offset].mode == 0 ?  "reserved" : "writeonly");
+	DPRINTF("ioapic_read offset %s 0x%x\n", ioapicregs[reg].name, (int)reg);
+	if (! ioapicregs[reg].mode & 1) {
+		fprintf(stderr, "Attempt to read %s, which is %s\n", ioapicregs[reg].name,
+			ioapicregs[reg].mode == 0 ?  "reserved" : "writeonly");
 		// panic? what to do?
 		return (uint32_t) -1;
 	}
 
-	// no special cases yet.
-	switch (offset) {
+	switch (reg) {
+	case 0:
+		return ioapic[ix].id;
+		break;
 	case 1:
 		return 0x170011;
+		break;
+	case 2:
+		return ioapic[ix].arbid;
+		break;
 	default:
-		DPRINTF("%s: return %08x\n", ioapicregs[offset].name, ioapicregs[offset].value);
-		return ioapicregs[offset].value;
+		index = (reg - 0x10) >> 1;
+		if (index >= 0 && index < IOAPIC_NUM_PINS) {
+			//bx_io_redirect_entry_t *entry = ioredtbl + index;
+			//data = (ioregsel&1) ? entry->get_hi_part() : entry->get_lo_part();
+			ret = (reg & 1) ? ioapic[ix].value[index]>>32 : ioapic[ix].value[index];
+			DPRINTF("%s: return %08x\n", ioapicregs[reg].name, ret);
+			return ret;
+		}
+		return ret;
 		break;
 	}
 	return 0;
 }
 
-static void ioapic_write(uint64_t offset, uint32_t value)
+static void ioapic_write(int ix, uint64_t offset, uint32_t value)
 {
-	uint64_t val64;
-	uint32_t low, high;
+	uint32_t ret;
+	uint32_t reg = ioapic[ix].reg;
+	int index;
 
-	DPRINTF("ioapic_write offset %s 0x%x value 0x%x\n", ioapicregs[offset].name, (int)offset, value);
-
-	if (! ioapicregs[offset].mode & 2) {
-		fprintf(stderr, "Attempt to write %s, which is %s\n", ioapicregs[offset].name,
-			ioapicregs[offset].mode == 0 ?  "reserved" : "readonly");
-		// panic? what to do?
-		return;
+	if (offset == 0) {
+		DPRINTF("ioapic_write ix %x set reg %x 0x%x\n", ioapicregs[reg].name, reg);
+		ioapic[ix].reg = value;
 	}
-    case 0x00: // set APIC ID
-      {
-        Bit8u newid = (value >> 24) & apic_id_mask;
-        BX_INFO(("IOAPIC: setting id to 0x%x", newid));
-        set_id (newid);
-        return;
-      }
-    case 0x01: // version
-    case 0x02: // arbitration id
-      BX_INFO(("IOAPIC: could not write, IOREGSEL=0x%02x", ioregsel));
-      return;
-    default:
-      int index = (ioregsel - 0x10) >> 1;
-      if (index >= 0 && index < BX_IOAPIC_NUM_PINS) {
-        bx_io_redirect_entry_t *entry = ioredtbl + index;
-        if (ioregsel&1)
-          entry->set_hi_part(value);
-        else
-          entry->set_lo_part(value);
-        char buf[1024];
-        entry->sprintf_self(buf);
-        BX_DEBUG(("IOAPIC: now entry[%d] is %s", index, buf));
-        service_ioapic();
-        return;
-      }
-      BX_PANIC(("IOAPIC: IOREGSEL points to undefined register %02x", ioregsel));
 
-	switch (offset) {
+	DPRINTF("ioapic_write offset %s 0x%x\n", ioapicregs[reg].name, (int)reg);
+	if (! ioapicregs[reg].mode & 2) {
+		fprintf(stderr, "Attempt to write %s, which is %s\n", ioapicregs[reg].name,
+			ioapicregs[reg].mode == 0 ?  "reserved" : "readonly");
+		// panic? what to do?
+	}
+
+	switch (reg) {
 	case 0:
-		ioapicregs.id
+		ioapic[ix].id = value;
+		break;
 	default:
-		DPRINTF("%s: Set to %08x\n", ioapicregs[offset].name, value);
-		ioapicregs[offset].value = value;
+		index = (reg - 0x10) >> 1;
+		if (index >= 0 && index < IOAPIC_NUM_PINS) {
+			//bx_io_redirect_entry_t *entry = ioredtbl + index;
+			//data = (ioregsel&1) ? entry->get_hi_part() : entry->get_lo_part();
+			uint64_t val = ioapic[ix].value[index];
+			if (reg & 1) {
+				val = (uint32_t) val | (((uint64_t)value) << 32);
+			} else {
+				val = ((val>>32)<<32) | value;
+			}
+			ioapic[ix].value[index] = val;
+			DPRINTF("%s: set %08x to %016x\n", ioapicregs[reg].name, reg, val);
+			}
 		break;
 	}
 
 }
 
-int ioapic(struct vmctl *v, uint64_t gpa, int destreg, uint64_t *regp, int store)
+int do_ioapic(struct vmctl *v, uint64_t gpa, int destreg, uint64_t *regp, int store)
 {
+	// TODO: compute an index for the ioapic array. 
+	int ix = 0;
 	uint32_t offset = gpa & 0xfffff;
 	/* basic sanity tests. */
-	// TODO: Should be minus the base but FIXME
-	offset = gpa & 0xfffff;
 
-	if (offset > IOAPIC_CONFIG) {
-		DPRINTF("Bad register offset: 0x%x and max is 0x%x\n", gpa, gpa + IOAPIC_CONFIG);
+	if ((offset != 0) && (offset != 0x10)) {
+		DPRINTF("Bad register offset: 0x%x and has to be 0x0 or 0x10\n", offset);
 		return -1;
 	}
 
 	if (store) {
-		ioapic_write(offset, *regp);
+		ioapic_write(ix, offset, *regp);
 		DPRINTF("Write: mov %s to %s @%p val %p\n", regname(destreg), ioapicregs[offset].name, gpa, *regp);
 	} else {
-		*regp = ioapic_read(offset);
+		*regp = ioapic_read(ix, offset);
 		DPRINTF("Read: Set %s from %s @%p to %p\n", regname(destreg), ioapicregs[offset].name, gpa, *regp);
 	}
 

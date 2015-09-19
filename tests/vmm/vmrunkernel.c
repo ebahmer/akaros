@@ -576,8 +576,8 @@ printf("%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 				apic(&vmctl, gpa, regx, regp, store);
 			} else if ((gpa & 0xfec00000) == 0xfec00000) {
 				// until we fix our include mess, just put the proto here.
-				int ioapic(struct vmctl *v, uint64_t gpa, int destreg, uint64_t *regp, int store);
-				ioapic(&vmctl, gpa, regx, regp, store);
+				int do_ioapic(struct vmctl *v, uint64_t gpa, int destreg, uint64_t *regp, int store);
+				do_ioapic(&vmctl, gpa, regx, regp, store);
 			} else if (gpa < 4096) {
 				uint64_t val = 0;
 				memmove(&val, &low4k[gpa], size);
