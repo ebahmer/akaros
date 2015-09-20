@@ -50,7 +50,6 @@ static uint32_t ioapic_read(int ix, uint64_t offset)
 {
 	uint32_t ret = (uint32_t)-1;
 	uint32_t reg = ioapic[ix].reg;
-	int index;
 
 
 	if (offset == 0) {
@@ -89,7 +88,6 @@ static void ioapic_write(int ix, uint64_t offset, uint32_t value)
 {
 	uint32_t ret;
 	uint32_t reg = ioapic[ix].reg;
-	int index;
 
 	if (offset == 0) {
 		DPRINTF("ioapic_write ix %x set reg 0x%x\n", ix, value);
@@ -106,7 +104,7 @@ static void ioapic_write(int ix, uint64_t offset, uint32_t value)
 	case 2:
 		DPRINTF("IOAPIC_WRITE: Can't write %d\n", reg);
 	default:
-		if (index >= 0 && index < (IOAPIC_NUM_PINS*2 + 0x10)) {
+		if (reg >= 0 && reg < (IOAPIC_NUM_PINS*2 + 0x10)) {
 			ioapic[ix].value[reg] = value;
 			DPRINTF("IOAPIC %x: set %08x to %016x\n", ix, reg, value);
 		} else {
