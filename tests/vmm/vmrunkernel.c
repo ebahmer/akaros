@@ -84,12 +84,13 @@ struct acpi_madt_local_apic Apic0 = {.header = {.type = ACPI_MADT_TYPE_LOCAL_API
 struct acpi_madt_io_apic Apic1 = {.header = {.type = ACPI_MADT_TYPE_IO_APIC, .length = sizeof(struct acpi_madt_io_apic)},
 				  .id = 1, .address = 0xfec00000, .global_irq_base = 0};
 struct acpi_madt_interrupt_override isor[] = {
+	/* I have no idea if it should be source irq 2, global 0, or global 2, source 0. Shit. */
 	{.header = {.type = ACPI_MADT_TYPE_INTERRUPT_OVERRIDE, .length = sizeof(struct acpi_madt_interrupt_override)},
-	 .bus = 0, .source_irq = 0, .global_irq = 0, .inti_flags = 0},
+	 .bus = 0, .source_irq = 2, .global_irq = 0, .inti_flags = 0},
 	{.header = {.type = ACPI_MADT_TYPE_INTERRUPT_OVERRIDE, .length = sizeof(struct acpi_madt_interrupt_override)},
 	 .bus = 0, .source_irq = 1, .global_irq = 1, .inti_flags = 0},
-	{.header = {.type = ACPI_MADT_TYPE_INTERRUPT_OVERRIDE, .length = sizeof(struct acpi_madt_interrupt_override)},
-	 .bus = 0, .source_irq = 2, .global_irq = 2, .inti_flags = 0},
+	//{.header = {.type = ACPI_MADT_TYPE_INTERRUPT_OVERRIDE, .length = sizeof(struct acpi_madt_interrupt_override)},
+	 //.bus = 0, .source_irq = 2, .global_irq = 2, .inti_flags = 0},
 	{.header = {.type = ACPI_MADT_TYPE_INTERRUPT_OVERRIDE, .length = sizeof(struct acpi_madt_interrupt_override)},
 	 .bus = 0, .source_irq = 3, .global_irq = 3, .inti_flags = 0},
 	{.header = {.type = ACPI_MADT_TYPE_INTERRUPT_OVERRIDE, .length = sizeof(struct acpi_madt_interrupt_override)},
