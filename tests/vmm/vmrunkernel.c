@@ -127,7 +127,7 @@ unsigned long long stack[1024];
 volatile int shared = 0;
 volatile int quit = 0;
 int mcp = 1;
-int virtioirq = 0x18;
+int virtioirq = 17;
 
 /* total hack. If the vm runs away we want to get control again. */
 unsigned int maxresume = (unsigned int) -1;
