@@ -117,6 +117,9 @@ struct acpi_madt_interrupt_override isor[] = {
 	 .bus = 0, .source_irq = 14, .global_irq = 14, .inti_flags = 0},
 	{.header = {.type = ACPI_MADT_TYPE_INTERRUPT_OVERRIDE, .length = sizeof(struct acpi_madt_interrupt_override)},
 	 .bus = 0, .source_irq = 15, .global_irq = 15, .inti_flags = 0},
+	// VMMCP routes irq 32 to gsi 17
+	{.header = {.type = ACPI_MADT_TYPE_INTERRUPT_OVERRIDE, .length = sizeof(struct acpi_madt_interrupt_override)},
+	 .bus = 0, .source_irq = 32, .global_irq = 17, .inti_flags = 5},
 };
 
 
@@ -631,7 +634,6 @@ fprintf(stderr, "%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 				break;
 			case EXIT_REASON_INTERRUPT_WINDOW:
 				if (consdata) {
-					debug = 1;
 					if (debug) fprintf(stderr, "inject an interrupt\n");
 					vmctl.interrupt = 0x80000000 | virtioirq;
 					vmctl.command = RESUME;
@@ -666,10 +668,11 @@ fprintf(stderr, "%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 		if (consdata) {
 			if (debug) fprintf(stderr, "inject an interrupt\n");
 			fprintf(stderr, "XINT 0x%x 0x%x\n", vmctl.intrinfo1, vmctl.intrinfo2);
-			if ((vmctl.intrinfo1 == 0) && (vmctl.regs.tf_rflags & 0x200))
+			if ((vmctl.intrinfo1 == 0) && (vmctl.regs.tf_rflags & 0x200)) {
 				vmctl.interrupt = 0x80000000 | virtioirq;
-			else 
+			} else { 
 				fprintf(stderr, "Can't inject interrupt: IF is clear\n");
+			}
 			vmctl.command = RESUME;
 			consdata = 0;
 		}

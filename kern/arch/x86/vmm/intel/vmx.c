@@ -1683,6 +1683,7 @@ int vmx_launch(struct vmctl *v) {
 	struct vmx_vcpu *vcpu;
 	int errors = 0;
 	int advance;
+	int interrupting = 0;
 
 	/* TODO: dirty hack til we have VMM contexts */
 	vcpu = current->vmm.guest_pcores[0];
@@ -1722,11 +1723,12 @@ int vmx_launch(struct vmctl *v) {
 			if ((v->regs.tf_rflags & 0x200) && (v->intrinfo1 == 0)) {
 				printk("Set VM_ENTRY_INFTR_INFO_FIELD to 0x%x\n", v->interrupt);
 				vmcs_writel(VM_ENTRY_INTR_INFO_FIELD, v->interrupt);
+				//vmx_set_rvi(v->interrupt);
 				v->interrupt = 0;
+				interrupting = 1;
 			} else {
 				printk("Can't set interrupt yet\n");
 			}
-			//vmx_set_rvi(v->interrupt);
 		}
 		printd("RESUME\n");
 		break;
@@ -1736,6 +1738,10 @@ int vmx_launch(struct vmctl *v) {
 	}
 	vcpu->shutdown = 0;
 	vmx_put_cpu(vcpu);
+	if (interrupting) {
+		printk("BEFORE INTERRUPT: ");
+		vmx_dump_cpu(vcpu);
+	}
 	vcpu->ret_code = -1;
 
 	while (1) {
@@ -1751,6 +1757,10 @@ int vmx_launch(struct vmctl *v) {
 		//dumpmsrs();
 		enable_irq();
 		vmx_put_cpu(vcpu);
+		if (interrupting) {
+			printk("POST INTERRUPT: ");
+			vmx_dump_cpu(vcpu);
+		}
 
 		if (ret == EXIT_REASON_VMCALL) {
 			if (current->vmm.flags & VMM_VMCALL_PRINTF) {
@@ -1821,6 +1831,7 @@ int vmx_launch(struct vmctl *v) {
 			vcpu->shutdown = SHUTDOWN_UNHANDLED_EXIT_REASON;
 		}
 
+		interrupting = 0;
 		/* TODO: we can't just return and relaunch the VMCS, in case we blocked.
 		 * similar to how proc_restartcore/smp_idle only restart the pcpui
 		 * cur_ctx, we need to do the same, via the VMCS resume business. */
