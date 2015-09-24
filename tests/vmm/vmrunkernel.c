@@ -267,7 +267,7 @@ dev: VIRTIO_ID_CONSOLE,
 device_features: 0, /* Can't do it: linux console device does not support it. VIRTIO_F_VERSION_1*/
 numvqs: 2,
 vqs: {
-		{name: "consin", maxqnum: 64, f: &consin, arg: (void *)0},
+		{name: "consin", maxqnum: 64, f: consin, arg: (void *)0},
 		{name: "consout", maxqnum: 64, f: consout, arg: (void *)0},
 	}
 };
@@ -635,6 +635,7 @@ fprintf(stderr, "%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 			case EXIT_REASON_INTERRUPT_WINDOW:
 				if (consdata) {
 					if (debug) fprintf(stderr, "inject an interrupt\n");
+					virtio_mmio_set_vring_irq();
 					vmctl.interrupt = 0x80000000 | virtioirq;
 					vmctl.command = RESUME;
 					consdata = 0;
@@ -670,6 +671,7 @@ fprintf(stderr, "%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 			fprintf(stderr, "XINT 0x%x 0x%x\n", vmctl.intrinfo1, vmctl.intrinfo2);
 			if ((vmctl.intrinfo1 == 0) && (vmctl.regs.tf_rflags & 0x200)) {
 				vmctl.interrupt = 0x80000000 | virtioirq;
+				virtio_mmio_set_vring_irq();
 			} else { 
 				fprintf(stderr, "Can't inject interrupt: IF is clear\n");
 			}
