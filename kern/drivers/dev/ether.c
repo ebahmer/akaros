@@ -329,18 +329,23 @@ struct block *etheriq(struct ether *ether, struct block *bp, int fromwire)
 				/* Don't want to hear bridged packets */
 				if (f->bridge && !fromwire && !fromme)
 					continue;
-				if (!f->headersonly) {
-					if (fromwire && fx == 0)
-						fx = f;
-					else if ((xbp = iallocb(len))) {
-						memmove(xbp->wp, pkt, len);
-						xbp->wp += len;
-						if (qpass(f->in, xbp) < 0)
-							ether->soverflows++;
-					} else
-						ether->soverflows++;
-				} else
+				if (f->headersonly) {
 					etherrtrace(f, pkt, len);
+					continue;
+				}
+				if (fromwire && fx == 0) {
+					fx = f;
+					continue;
+				}
+				xbp = iallocb(len);
+				if (xbp == 0) {
+					ether->soverflows++;
+					continue;
+				}
+				memmove(xbp->wp, pkt, len);
+				xbp->wp += len;
+				if (qpass(f->in, xbp) < 0)
+					ether->soverflows++;
 			}
 	}
 
