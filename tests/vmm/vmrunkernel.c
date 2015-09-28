@@ -204,7 +204,7 @@ void *consout(void *arg)
 }
 
 // FIXME. 
-int consdata = 0;
+volatile int consdata = 0;
 
 void *consin(void *arg)
 {
@@ -652,8 +652,19 @@ fprintf(stderr, "%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 				break;
 			case EXIT_REASON_HLT:
 				fflush(stdout);
-				fprintf(stderr, "\n================== Guest halted. RIP. =======================\n");
-				quit = 1;
+				if (debug)fprintf(stderr, "\n================== Guest halted. =======================\n");
+				if (debug)fprintf(stderr, "Wait for cons data\n");
+				while (!consdata)
+					;
+				//debug = 1;
+				if (debug)fprintf(stderr, "Resume with consdata ...\n");
+				vmctl.regs.tf_rip += 1;
+				ret = write(fd, &vmctl, sizeof(vmctl));
+				if (ret != sizeof(vmctl)) {
+					perror(cmd);
+				}
+				//fprintf(stderr, "RIP %p, shutdown 0x%x\n", vmctl.regs.tf_rip, vmctl.shutdown);
+				//showstatus(stderr, &vmctl);
 				break;
 			default:
 				fprintf(stderr, "Don't know how to handle exit %d\n", vmctl.ret_code);
@@ -672,11 +683,12 @@ fprintf(stderr, "%p %p %p %p\n", PGSIZE, PGSHIFT, PML1_SHIFT, PML1_PTE_REACH);
 			if ((vmctl.intrinfo1 == 0) && (vmctl.regs.tf_rflags & 0x200)) {
 				vmctl.interrupt = 0x80000000 | virtioirq;
 				virtio_mmio_set_vring_irq();
+				consdata = 0;
+				//debug = 1;
 			} else { 
 				fprintf(stderr, "Can't inject interrupt: IF is clear\n");
 			}
 			vmctl.command = RESUME;
-			consdata = 0;
 		}
 		if (debug) fprintf(stderr, "NOW DO A RESUME\n");
 		ret = write(fd, &vmctl, sizeof(vmctl));
