@@ -515,12 +515,10 @@ static const struct vmxec cbec = {
 	.truemsr = MSR_IA32_VMX_TRUE_PROCBASED_CTLS,
 
 	.must_be_1 = (CPU_BASED_HLT_EXITING |
-		     CPU_BASED_MWAIT_EXITING |
 		     CPU_BASED_RDPMC_EXITING |
 		     CPU_BASED_CR8_LOAD_EXITING |
 		     CPU_BASED_CR8_STORE_EXITING |
 		     CPU_BASED_USE_MSR_BITMAPS |
-		     CPU_BASED_MONITOR_EXITING |
 		     CPU_BASED_USE_IO_BITMAPS |
 		     CPU_BASED_ACTIVATE_SECONDARY_CONTROLS),
 
@@ -538,6 +536,9 @@ static const struct vmxec cbec = {
 		     CPU_BASED_TPR_SHADOW |
 
 		     CPU_BASED_UNCOND_IO_EXITING),
+
+	.try_set_0 = (CPU_BASED_MONITOR_EXITING |
+		     CPU_BASED_MWAIT_EXITING)
 };
 
 static const struct vmxec cb2ec = {
@@ -567,7 +568,10 @@ static const struct vmxec cb2ec = {
 		     SECONDARY_EPT_VE |
 		     SECONDARY_ENABLE_XSAV_RESTORE),
 
-	.try_set_1 = SECONDARY_EXEC_RDTSCP
+	.try_set_1 = SECONDARY_EXEC_RDTSCP,
+
+	// mystery bit.
+	.try_set_0 = 0x2000000
 
 };
 
