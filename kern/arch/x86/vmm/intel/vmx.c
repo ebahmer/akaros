@@ -514,7 +514,9 @@ static const struct vmxec cbec = {
 	.msr = MSR_IA32_VMX_PROCBASED_CTLS,
 	.truemsr = MSR_IA32_VMX_TRUE_PROCBASED_CTLS,
 
-	.must_be_1 = (CPU_BASED_HLT_EXITING |
+	.must_be_1 = (CPU_BASED_MWAIT_EXITING |
+			CPU_BASED_HLT_EXITING |
+		     CPU_BASED_TPR_SHADOW |
 		     CPU_BASED_RDPMC_EXITING |
 		     CPU_BASED_CR8_LOAD_EXITING |
 		     CPU_BASED_CR8_STORE_EXITING |
@@ -522,7 +524,8 @@ static const struct vmxec cbec = {
 		     CPU_BASED_USE_IO_BITMAPS |
 		     CPU_BASED_ACTIVATE_SECONDARY_CONTROLS),
 
-	.must_be_0 = (CPU_BASED_VIRTUAL_INTR_PENDING |
+	.must_be_0 = (
+			CPU_BASED_VIRTUAL_INTR_PENDING |
 		     CPU_BASED_INVLPG_EXITING |
 		     CPU_BASED_USE_TSC_OFFSETING |
 		     CPU_BASED_RDTSC_EXITING |
@@ -532,13 +535,9 @@ static const struct vmxec cbec = {
 		     CPU_BASED_VIRTUAL_NMI_PENDING |
 		     CPU_BASED_MONITOR_TRAP |
 		     CPU_BASED_PAUSE_EXITING |
-
-		     CPU_BASED_TPR_SHADOW |
-
 		     CPU_BASED_UNCOND_IO_EXITING),
 
-	.try_set_0 = (CPU_BASED_MONITOR_EXITING |
-		     CPU_BASED_MWAIT_EXITING)
+	.try_set_0 = (CPU_BASED_MONITOR_EXITING)
 };
 
 static const struct vmxec cb2ec = {
@@ -547,14 +546,14 @@ static const struct vmxec cb2ec = {
 	.truemsr = MSR_IA32_VMX_PROCBASED_CTLS2,
 
 	.must_be_1 = (SECONDARY_EXEC_ENABLE_EPT |
-		     //SECONDARY_EXEC_APIC_REGISTER_VIRT |
-		     //SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY |
+		     SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES |
+		     SECONDARY_EXEC_APIC_REGISTER_VIRT |
+		     SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY |
 		     SECONDARY_EXEC_WBINVD_EXITING),
 
 	.must_be_0 = (
-			SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES |
-		     SECONDARY_EXEC_APIC_REGISTER_VIRT |
-		     SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY |
+		     //SECONDARY_EXEC_APIC_REGISTER_VIRT |
+		     //SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY |
 		     SECONDARY_EXEC_DESCRIPTOR_EXITING |
 		     SECONDARY_EXEC_VIRTUALIZE_X2APIC_MODE |
 		     SECONDARY_EXEC_ENABLE_VPID |
@@ -1748,8 +1747,8 @@ int vmx_launch(struct vmctl *v) {
 		 */
 		if (v->interrupt) {
 			printk("Set VM_ENTRY_INFTR_INFO_FIELD to 0x%x\n", v->interrupt);
-			vmcs_writel(VM_ENTRY_INTR_INFO_FIELD, v->interrupt);
-			//vmx_set_rvi(v->interrupt);
+			//vmcs_writel(VM_ENTRY_INTR_INFO_FIELD, v->interrupt);
+			vmx_set_rvi(v->interrupt);
 			v->interrupt = 0;
 			interrupting = 1;
 		}
