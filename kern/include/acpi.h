@@ -384,6 +384,10 @@ struct Xsdt {
 	uint8_t *p;
 };
 
+/* DMAR. 
+ */
+struct Dmar {
+};
 
 extern uintptr_t acpimblocksize(uintptr_t, int *);
 

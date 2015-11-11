@@ -47,6 +47,7 @@ static char *devname(void)
 static struct Atable *acpifadt(uint8_t *, int);
 static struct Atable *acpitable(uint8_t *, int);
 static struct Atable *acpimadt(uint8_t *, int);
+static struct Atable *acpidmar(uint8_t *, int);
 static struct Atable *acpimsct(uint8_t *, int);
 static struct Atable *acpisrat(uint8_t *, int);
 static struct Atable *acpislit(uint8_t *, int);
@@ -81,6 +82,7 @@ static struct dirtab acpidir[] = {
 static struct Parse ptables[] = {
 	{"FACP", acpifadt},
 	{"APIC", acpimadt,},
+	{"DMAR", acpidmar,},
 	{"SRAT", acpisrat,},
 	{"SLIT", acpislit,},
 	{"MSCT", acpimsct,},
@@ -95,6 +97,7 @@ static struct Atable *tfirst;	/* loaded DSDT/SSDT/... tables */
 static struct Atable *tlast;	/* pointer to last table */
 struct Madt *apics;				/* APIC info */
 struct Srat *srat;				/* System resource affinity, used by physalloc */
+struct Dmar *dmar;
 static struct Slit *slit;		/* System locality information table used by the scheduler */
 static struct Msct *msct;		/* Maximum system characteristics table */
 static struct Reg *reg;			/* region used for I/O */
@@ -683,9 +686,15 @@ static struct Atable *acpimsct(uint8_t * p, int len)
 	return NULL;	/* can be unmapped once parsed */
 }
 
+static char *dumpdmar(char *start, char *end, struct Dmar *dt)
+{
+	start = seprintf(start, end, "acpi: DMAR@%p:\n", dt);
+	return start;
+}
+
 static char *dumpsrat(char *start, char *end, struct Srat *st)
 {
-	start = seprintf(start, end, "acpi: START@%p:\n", st);
+	start = seprintf(start, end, "acpi: SRAT@%p:\n", st);
 	for (; st != NULL; st = st->next)
 		switch (st->type) {
 			case SRlapic:
@@ -1069,6 +1078,12 @@ static struct Atable *acpimadt(uint8_t * p, int len)
 			stl = &st->next;
 		}
 	}
+ 	return NULL;	/* can be unmapped once parsed */
+ }
+
+static struct Atable *acpidmar(uint8_t * p, int len)
+{
+	dmar = kzmalloc(sizeof(*dmar), 1);
 	return NULL;	/* can be unmapped once parsed */
 }
 
@@ -1604,6 +1619,7 @@ static long acpiread(struct chan *c, void *a, long n, int64_t off)
 			s = dumpmadt(s, e, apics);
 			s = dumpslit(s, e, slit);
 			s = dumpsrat(s, e, srat);
+			s = dumpdmar(s, e, dmar);
 			dumpmsct(s, e, msct);
 			return readstr(off, a, n, ttext);
 		case Qioapic:
