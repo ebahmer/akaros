@@ -133,6 +133,8 @@ static int acpiregid(char *s)
 	return -1;
 }
 
+// TODO fix these if we're ever on a different-endian machine. There not portable.
+// But who would be stupid enough to use ACPI anyway.
 static uint8_t mget8(uintptr_t p, void *unused)
 {
 	uint8_t *cp = (uint8_t *) p;
@@ -686,13 +688,31 @@ static struct Atable *acpimsct(uint8_t * p, int len)
 	return NULL;	/* can be unmapped once parsed */
 }
 
+/* just shoot me. */
+static char *dmartype[] = {"DRHD", "RMRR", "ATSR", "RHSA", "ANDD", };
+
 /* only handles on IOMMU for now. What a POS */
 static char *dumpdmar(char *start, char *end, struct Dmar *dt)
 {
+	int i;
 	start = seprintf(start, end, "acpi: DMAR@%p:\n", dt);
 	start = seprintf(start, end, 
-			 "\tdmar: intr_remap %d haw %d\n", 
-			 dmar->intr_remap, dmar->haw);
+			 "\tdmar: intr_remap %d haw %d entries %d\n", 
+			 dmar->intr_remap, dmar->haw, dt->numentry);
+	for(i = 0; i < dt->numentry; i++) {
+		struct Dtab *dtab = &dt->dtab[i];
+		int t = dtab->type;
+		start = seprintf(start, end, "\t%s: ", dmartype[t]);
+		// TODO: function pointers in an array? probably. */
+		switch(t) {
+		case DRHD:
+			start = seprintf(start, end, "%s 0x%02x 0x%016x\n", dtab->drhd.flags & 1 ? "INCLUDE_PCI_ALL" : "Scoped", 
+					 dtab->drhd.segment, dtab->drhd.base);
+			break;
+		default:
+			start = seprintf(start, end, "\n");
+		}
+	}
 	return start;
 }
 
@@ -1083,13 +1103,48 @@ static struct Atable *acpimadt(uint8_t * p, int len)
 		}
 	}
  	return NULL;	/* can be unmapped once parsed */
- }
+}
+
+static int dtab(uint8_t *p, struct Dtab *dtab)
+{
+	int len;
+	dtab->type = l16get(p);
+	p += 2;
+	len = l16get(p);
+	p += 2;
+	switch(dtab->type) {
+	case DRHD:
+		dtab->drhd.flags = p[0] & 1;
+		p++;
+		p++; /* reserved */
+		dtab->drhd.segment = l16get(p);
+		p += 2;
+		dtab->drhd.base = l64get(p);
+		p += 8;
+		break;
+	default:
+		break;
+	}
+	return len;
+	
+		
+}
 
 static struct Atable *acpidmar(uint8_t * p, int len)
 {
 	int i;
 	int baselen = len > 38 ? 38 : len;
-	dmar = kzmalloc(baselen > len ? baselen : len, 1);
+	int nentry, off;
+
+	/* count the entries */
+	for(nentry = 0, off = 48; off < len; nentry++) {
+		int dslen = p[off+2]|(p[off+3]<<8);
+		printk("@%d it is %p 0x%x/0x%x\n", nentry, p, p[off]|(p[off+1]<<8), dslen);
+		off = off + dslen;
+	}
+	printk("DMAR: %d entries\n", nentry);
+	dmar = kzmalloc(sizeof(*dmar) + nentry * sizeof(dmar->dtab[0]), 1);
+	dmar->numentry = nentry;
 	/* the table can be only partly filled. Don't we all love ACPI?
 	 * No, we f@@@ing hate it.
 	 */
@@ -1119,10 +1174,11 @@ static struct Atable *acpidmar(uint8_t * p, int len)
 	/* now we get to walk all the 2 byte elements, ain't it
 	 * grand.
 	 */
-	for(i = 48; i < len; ) {
-		int dslen = p[i+2]|(p[i+3]<<8);
-		printk("@%d it is %p 0x%x/0x%x\n", 48, p, p[i]|(p[i+1]<<8), dslen);
-		i = i + dslen;
+	for(off = 48, i = 0; i < nentry; i++) {
+		int dslen = p[2+off]|(p[off+3]<<8);
+		printk("@%d it is %p 0x%x/0x%x\n", i, &p[off], p[off]|(p[off+1]<<8), dslen);
+		dtab(&p[off], &dmar->dtab[i]);
+		off += dslen; //drhd(&p[off], &dmar->dtab[i]);
 	}
 	return NULL;	/* can be unmapped once parsed */
 }

@@ -65,6 +65,13 @@ enum {
 	SRmem,	/* Memory affinity */
 	SRlx2apic,	/* x2 apic affinity */
 
+	/* DMAR types */
+	DRHD = 0,
+	RMRR,
+	ATSR,
+	RHSA,
+	ANDD,
+
 	/* Arg for _PIC */
 	Ppic = 0,	/* PIC interrupt model */
 	Papic,	/* APIC interrupt model */
@@ -386,19 +393,33 @@ struct Xsdt {
 
 /* DMAR. 
  */
+struct DeviceScope {
+};
+
+/* this is just hateful, and maybe there's a better way.
+ * I can't think of anything that's not a total ugly clusterfuck.
+ */
+struct Dtab {
+	int type;
+	union {
+		struct Drhd {
+			int nscope;
+			int flags;
+			int segment;
+			uintptr_t base;
+			struct DeviceScope scopes[];
+		}drhd;
+	};
+};
+
 struct Dmar {
-	/* don't think we need to do these, done in common code?
-	uint8_t oemid[10];
-	uint8_t oemtblid[8];
-	uint8_t oemrev[4];
-	uint8_t cid[4];
-	uint8_t crev[4];
-	*/
 	int haw;
 	/* no, sorry, if your stupid firmware disables x2apic
 	 * mode, you should not be here. We ignore that bit.
 	 */
 	int intr_remap;
+	int numentry;
+	struct Dtab dtab[];
 };
 
 extern uintptr_t acpimblocksize(uintptr_t, int *);
