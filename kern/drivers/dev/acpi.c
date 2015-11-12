@@ -686,9 +686,13 @@ static struct Atable *acpimsct(uint8_t * p, int len)
 	return NULL;	/* can be unmapped once parsed */
 }
 
+/* only handles on IOMMU for now. What a POS */
 static char *dumpdmar(char *start, char *end, struct Dmar *dt)
 {
 	start = seprintf(start, end, "acpi: DMAR@%p:\n", dt);
+	start = seprintf(start, end, 
+			 "\tdmar: intr_remap %d haw %d\n", 
+			 dmar->intr_remap, dmar->haw);
 	return start;
 }
 
@@ -1083,7 +1087,43 @@ static struct Atable *acpimadt(uint8_t * p, int len)
 
 static struct Atable *acpidmar(uint8_t * p, int len)
 {
-	dmar = kzmalloc(sizeof(*dmar), 1);
+	int i;
+	int baselen = len > 38 ? 38 : len;
+	dmar = kzmalloc(baselen > len ? baselen : len, 1);
+	/* the table can be only partly filled. Don't we all love ACPI?
+	 * No, we f@@@ing hate it.
+	 */
+	switch(baselen) {
+	default:
+			break;
+
+	case 38: 
+		if (p[37] & 1)
+			dmar->intr_remap = 1;
+	case 37:
+		dmar->haw = p[36] + 1;
+		/* common code ? 
+		   ;
+		   case 36:
+		   memmove(dmar->crev, &p[32], sizeof(dmar->crev));
+		   case 32:
+		   memmove(dmar->cid, &p[28], sizeof(dmar->cid));
+		   case 28:
+		   memmove(dmar->oemrev, &p[24], sizeof(dmar->oemrev));
+		   case 20:
+		   memmove(dmar->oemtblid, &p[16], sizeof(dmar->oemtblid));
+		   case 16: 
+		   memmove(dmar->oemid, &p[10], sizeof(dmar->oemid));
+		*/
+	}
+	/* now we get to walk all the 2 byte elements, ain't it
+	 * grand.
+	 */
+	for(i = 48; i < len; ) {
+		int dslen = p[i+2]|(p[i+3]<<8);
+		printk("@%d it is %p 0x%x/0x%x\n", 48, p, p[i]|(p[i+1]<<8), dslen);
+		i = i + dslen;
+	}
 	return NULL;	/* can be unmapped once parsed */
 }
 

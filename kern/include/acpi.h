@@ -387,6 +387,18 @@ struct Xsdt {
 /* DMAR. 
  */
 struct Dmar {
+	/* don't think we need to do these, done in common code?
+	uint8_t oemid[10];
+	uint8_t oemtblid[8];
+	uint8_t oemrev[4];
+	uint8_t cid[4];
+	uint8_t crev[4];
+	*/
+	int haw;
+	/* no, sorry, if your stupid firmware disables x2apic
+	 * mode, you should not be here. We ignore that bit.
+	 */
+	int intr_remap;
 };
 
 extern uintptr_t acpimblocksize(uintptr_t, int *);
