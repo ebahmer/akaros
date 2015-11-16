@@ -66,6 +66,7 @@ static struct dirtab acpidir[] = {
 	{"ioapic", {Qioapic}, 0, 0444},
 	{"apic", {Qapic}, 0, 0444},
 	{"raw", {Qraw}, 0, 0444},
+	{"drhd", {Qdrhd}, 0, 0444}
 };
 
 /*
@@ -710,7 +711,8 @@ static char *dumpdmar(char *start, char *end, struct Dmar *dt)
 					 dtab->drhd.segment, dtab->drhd.base);
 			break;
 		default:
-			start = seprintf(start, end, "\n");
+			start = seprintf(start, end, "Unsupported: type %t\n", t);
+			break;
 		}
 	}
 	return start;
@@ -1157,19 +1159,6 @@ static struct Atable *acpidmar(uint8_t * p, int len)
 			dmar->intr_remap = 1;
 	case 37:
 		dmar->haw = p[36] + 1;
-		/* common code ? 
-		   ;
-		   case 36:
-		   memmove(dmar->crev, &p[32], sizeof(dmar->crev));
-		   case 32:
-		   memmove(dmar->cid, &p[28], sizeof(dmar->cid));
-		   case 28:
-		   memmove(dmar->oemrev, &p[24], sizeof(dmar->oemrev));
-		   case 20:
-		   memmove(dmar->oemtblid, &p[16], sizeof(dmar->oemtblid));
-		   case 16: 
-		   memmove(dmar->oemid, &p[10], sizeof(dmar->oemid));
-		*/
 	}
 	/* now we get to walk all the 2 byte elements, ain't it
 	 * grand.
@@ -1178,7 +1167,7 @@ static struct Atable *acpidmar(uint8_t * p, int len)
 		int dslen = p[2+off]|(p[off+3]<<8);
 		printk("@%d it is %p 0x%x/0x%x\n", i, &p[off], p[off]|(p[off+1]<<8), dslen);
 		dtab(&p[off], &dmar->dtab[i]);
-		off += dslen; //drhd(&p[off], &dmar->dtab[i]);
+		off += dslen;
 	}
 	return NULL;	/* can be unmapped once parsed */
 }
@@ -1689,45 +1678,49 @@ static long acpiread(struct chan *c, void *a, long n, int64_t off)
 		case Qraw:
 			return readmem(off, a, n, ttext, tlen);
 			break;
-		case Qtbl:
-			s = ttext;
-			e = ttext + tlen;
-			strlcpy(s, "no tables\n", tlen);
-			for (t = tfirst; t != NULL; t = t->next) {
+	case Qdrhd:
+		error(EINVAL, "not yet");
+		break;
+		
+	case Qtbl:
+		s = ttext;
+		e = ttext + tlen;
+		strlcpy(s, "no tables\n", tlen);
+		for (t = tfirst; t != NULL; t = t->next) {
+			ns = seprinttable(s, e, t);
+			while (ns == e - 1) {
+				ntext = krealloc(ttext, tlen * 2, 0);
+				if (ntext == NULL)
+					panic("acpi: no memory\n");
+				s = ntext + (ttext - s);
+				ttext = ntext;
+				tlen *= 2;
+				e = ttext + tlen;
 				ns = seprinttable(s, e, t);
-				while (ns == e - 1) {
-					ntext = krealloc(ttext, tlen * 2, 0);
-					if (ntext == NULL)
-						panic("acpi: no memory\n");
-					s = ntext + (ttext - s);
-					ttext = ntext;
-					tlen *= 2;
-					e = ttext + tlen;
-					ns = seprinttable(s, e, t);
-				}
-				s = ns;
 			}
-			return readstr(off, a, n, ttext);
-		case Qpretty:
-			s = ttext;
-			e = ttext + tlen;
-			s = dumpfadt(s, e, &fadt);
-			s = dumpmadt(s, e, apics);
-			s = dumpslit(s, e, slit);
-			s = dumpsrat(s, e, srat);
-			s = dumpdmar(s, e, dmar);
-			dumpmsct(s, e, msct);
-			return readstr(off, a, n, ttext);
-		case Qioapic:
-			s = ioapicdump(ttext, ttext + tlen);
-			return readstr(off, a, n, ttext);
-		case Qapic:
-			s = apicdump(ttext, ttext + tlen);
-			return readstr(off, a, n, ttext);
-		case Qio:
-			if (reg == NULL)
-				error(EFAIL, "region not configured");
-			return regio(reg, a, n, off, 0);
+			s = ns;
+		}
+		return readstr(off, a, n, ttext);
+	case Qpretty:
+		s = ttext;
+		e = ttext + tlen;
+		s = dumpfadt(s, e, &fadt);
+		s = dumpmadt(s, e, apics);
+		s = dumpslit(s, e, slit);
+		s = dumpsrat(s, e, srat);
+		s = dumpdmar(s, e, dmar);
+		dumpmsct(s, e, msct);
+		return readstr(off, a, n, ttext);
+	case Qioapic:
+		s = ioapicdump(ttext, ttext + tlen);
+		return readstr(off, a, n, ttext);
+	case Qapic:
+		s = apicdump(ttext, ttext + tlen);
+		return readstr(off, a, n, ttext);
+	case Qio:
+		if (reg == NULL)
+			error(EFAIL, "region not configured");
+		return regio(reg, a, n, off, 0);
 	}
 	error(EPERM, NULL);
 	return -1;

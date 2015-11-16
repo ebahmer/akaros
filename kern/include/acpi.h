@@ -88,6 +88,7 @@ enum {
 	Qioapic,
 	Qapic,
 	Qraw,
+	Qdrhd,
 };
 
 /*
