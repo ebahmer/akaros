@@ -696,6 +696,8 @@ static char *dmartype[] = {"DRHD", "RMRR", "ATSR", "RHSA", "ANDD", };
 static char *dumpdmar(char *start, char *end, struct Dmar *dt)
 {
 	int i;
+	if (! dmar)
+		return start;
 	start = seprintf(start, end, "acpi: DMAR@%p:\n", dt);
 	start = seprintf(start, end, 
 			 "\tdmar: intr_remap %d haw %d entries %d\n", 
