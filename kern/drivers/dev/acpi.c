@@ -707,7 +707,7 @@ static char *dumpdmar(char *start, char *end, struct Dmar *dt)
 		// TODO: function pointers in an array? probably. */
 		switch(t) {
 		case DRHD:
-			start = seprintf(start, end, "%s 0x%02x 0x%016x\n", dtab->drhd.flags & 1 ? "INCLUDE_PCI_ALL" : "Scoped", 
+			start = seprintf(start, end, "%s 0x%02x 0x%016x\n", dtab->drhd.all & 1 ? "INCLUDE_PCI_ALL" : "Scoped", 
 					 dtab->drhd.segment, dtab->drhd.base);
 			break;
 		default:
@@ -1107,6 +1107,24 @@ static struct Atable *acpimadt(uint8_t * p, int len)
  	return NULL;	/* can be unmapped once parsed */
 }
 
+/* one function for each type of scope. 
+ */
+
+static void dscopes(uint8_t *p, struct Dtab *dtab, int tablen)
+{
+	int i;
+	int curoffset = 16;
+	dtab->drhd.nscope = 0;
+	printk("dscopes@%p, %d scopes: ", &p[curoffset], tablen - curoffset);
+	hexdump(&p[curoffset], tablen - curoffset);
+	for(i = curoffset; i < tablen; i += 4){
+		/* this is PAINFUL. We read the tbdf, look it up, read
+		 * the next scope, look that up w.r.t the one we have,
+		 * blah blah. Who designs this stuff? */
+	}
+
+}
+
 static int dtab(uint8_t *p, struct Dtab *dtab)
 {
 	int len;
@@ -1116,20 +1134,26 @@ static int dtab(uint8_t *p, struct Dtab *dtab)
 	p += 2;
 	switch(dtab->type) {
 	case DRHD:
-		dtab->drhd.flags = p[0] & 1;
+		dtab->drhd.all = p[0] & 1;
 		p++;
 		p++; /* reserved */
 		dtab->drhd.segment = l16get(p);
 		p += 2;
 		dtab->drhd.base = l64get(p);
 		p += 8;
+		/* NOTE: if all is set, there should be no scopes of type 
+		 * This being ACPI, where vendors randomly copy tables
+		 * from one system to another, and creating breakage,
+		 * anything is possible. But we'll warn them.
+		 */
+		dscopes(p, dtab, len);
 		break;
 	default:
 		break;
 	}
+
+	/* N.B. We always skip over any unprocessed bits. */
 	return len;
-	
-		
 }
 
 static struct Atable *acpidmar(uint8_t * p, int len)

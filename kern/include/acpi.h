@@ -394,7 +394,11 @@ struct Xsdt {
 
 /* DMAR. 
  */
+/* The device scope is basic tbdf as uint32_t. There is a special value that means
+ * "everything" and if we see that we set "all" in the Drhd. 
+ */
 struct DeviceScope {
+	uint32_t tbdf;
 };
 
 /* this is just hateful, and maybe there's a better way.
@@ -405,9 +409,9 @@ struct Dtab {
 	union {
 		struct Drhd {
 			int nscope;
-			int flags;
 			int segment;
 			uintptr_t base;
+			uintptr_t all; // this drhd scope is for everything.
 			struct DeviceScope scopes[];
 		}drhd;
 	};
