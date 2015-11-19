@@ -1115,7 +1115,7 @@ static struct Atable *acpimadt(uint8_t * p, int len)
 static void dscopes(uint8_t *p, struct Dtab *dtab, int tablen)
 {
 	int i;
-	int curoffset = 16;
+	int curoffset = 0;
 	dtab->drhd.nscope = 0;
 	printk("dscopes@%p, %d scopes: ", &p[curoffset], tablen - curoffset);
 	hexdump(&p[curoffset], tablen - curoffset);
