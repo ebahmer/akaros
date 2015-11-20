@@ -28,6 +28,27 @@
 #include <arch/pci.h>
 #endif
 
+/*
+ * Basic ACPI device.
+ * ACPI has not yet defined more than 254 things at each level, or more than 256 levels.
+ * Of course they are creative, but let's hope they're not that creative.
+ * So we use the Path in a QID as a path or eight elements: char path[8];
+ * Path == -1 is root. As you walk you fill in the blanks. This allows us to have
+ * a pretty easy gen function.
+ * To walk to a thing, look it up in a table and fill its index into the next open spot
+ * in the path. 
+ * To walk to ., return the QID of course.
+ * To walk to .., if Path is -1, return it; otherwise, take the LAST-non-ff element and
+ * replace it with ff.
+ * Version, which is 32 bits, is used to store the ACPI ID, which is either 32, 16, or 8 bits.
+ */
+
+enum {
+	Qroot = (uint64_t) -1,
+	Qraw = 0xfe,
+	Qpretty = 0xfd
+}
+
 struct dev acpidevtab;
 
 static char *devname(void)
@@ -58,18 +79,11 @@ static struct cmdtab ctls[] = {
 };
 
 static struct dirtab acpidir[] = {
-	{".", {Qdir, 0, QTDIR}, 0, DMDIR | 0555},
-	{"acpictl", {Qctl}, 0, 0666},
-	{"acpitbl", {Qtbl}, 0, 0444},
-	{"acpiregio", {Qio}, 0, 0666},
-	{"acpipretty", {Qpretty}, 0, 0444},
-	{"ioapic", {Qioapic}, 0, 0444},
-	{"apic", {Qapic}, 0, 0444},
-	{"raw", {Qraw}, 0, 0444},
-	{"drhd", {Qdrhd}, 0, 0444}
+	{".", {Qroot, 0, QTDIR}, 0, DMDIR | 0555},
 };
 
 /*
+ * Note: some of this comment is from the mythical, unfinished, user interpreter.
  * The DSDT is always given to the user interpreter.
  * Tables listed here are also loaded from the XSDT:
  * MSCT, MADT, and FADT are processed by us, because they are
@@ -80,15 +94,19 @@ static struct dirtab acpidir[] = {
  * These historically returned a value to tell acpi whether or not it was okay
  * to unmap the table.  (return 0 means there was no table, meaning it was okay
  * to unmap).  We just use the kernbase mapping, so it's irrelevant. */
-static struct Parse ptables[] = {
-	{"FACP", acpifadt},
-	{"APIC", acpimadt,},
-	{"DMAR", acpidmar,},
-	{"SRAT", acpisrat,},
-	{"SLIT", acpislit,},
-	{"MSCT", acpimsct,},
-	{"SSDT", acpitable,},
-	{"HPET", acpihpet,},
+/* N.B. The intel source code defines the constants for ACPI in a non-endian-independent manner.
+ * Rather than bring in the huge wad o' code that represents, we just the names.
+ * The whole mess is just amazing.
+ */
+static struct dirtab ptables[] = {
+	{"FACP", {0, (uint32_t)"FACP", QTDIR}, 0, DMDIR | 0555, acpifadt},
+	{"APIC", {0, (uint32_t)"APIC", QTDIR}, 0, DMDIR | 0555, acpimadt},
+	{"DMAR", {0, (uint32_t)"DMAR", QTDIR}, 0, DMDIR | 0555, acpidmar},
+	{"SRAT", {0, (uint32_t)"SRAT", QTDIR}, 0, DMDIR | 0555, acpisrat},
+	{"SLIT", {0, (uint32_t)"SLIT", QTDIR}, 0, DMDIR | 0555, acpislit},
+	{"MSCT", {0, (uint32_t)"MSCT", QTDIR}, 0, DMDIR | 0555, acpimsct},
+	{"SSDT", {0, (uint32_t)"SSDT", QTDIR}, 0, DMDIR | 0555, acpitable},
+	{"HPET", {0, (uint32_t)"HPTE", QTDIR}, 0, DMDIR | 0555, acpihpet},
 };
 
 static struct Facs *facs;		/* Firmware ACPI control structure */
@@ -1367,13 +1385,24 @@ static void acpirsdptr(void)
 }
 
 static int
-acpigen(struct chan *c, char *unused_char_p_t, struct dirtab *tab, int ntab,
+acpigen(struct chan *c, char *name, struct dirtab *tab, int ntab,
 		int i, struct dir *dp)
 {
 	struct qid qid;
+	int el;
+	uint8_t *cp = &c->qid.path;
+
+	/* Walk the path. Basically walk the parts of the qid that get
+	 * you to a place, then from there, parse the rest of the path
+	 * components.
+	 */
+	for(el = 0; el < 8; el++) {
+		if (cp[i] == 0xff)
+			break;
+	}
 
 	if (i == DEVDOTDOT) {
-		mkqid(&qid, Qdir, 0, QTDIR);
+		mkqid(&qid, Qdir, Qroot, QTDIR);
 		devdir(c, qid, devname(), 0, eve, 0555, dp);
 		return 1;
 	}
@@ -1736,12 +1765,6 @@ static long acpiread(struct chan *c, void *a, long n, int64_t off)
 		s = dumpsrat(s, e, srat);
 		s = dumpdmar(s, e, dmar);
 		dumpmsct(s, e, msct);
-		return readstr(off, a, n, ttext);
-	case Qioapic:
-		s = ioapicdump(ttext, ttext + tlen);
-		return readstr(off, a, n, ttext);
-	case Qapic:
-		s = apicdump(ttext, ttext + tlen);
 		return readstr(off, a, n, ttext);
 	case Qio:
 		if (reg == NULL)

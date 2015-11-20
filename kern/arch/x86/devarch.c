@@ -56,6 +56,8 @@ enum {
 	Qgdb,
 	Qmapram,
 	Qrealmem,
+	Qapic,
+	Qioapic,
 	Qbase,
 
 	Qmax = 16,
@@ -74,6 +76,8 @@ static struct dirtab archdir[Qmax] = {
 	{"iol", {Qiol, 0}, 0, 0666},
 	{"gdb", {Qgdb, 0}, 0, 0660},
 	{"mapram", {Qmapram, 0}, 0, 0444},
+	{"apic", {Qapic, 0}, 0, 0444},
+	{"ioapic", {Qioapic, 0}, 0, 0444},
 	{"realmodemem", {Qrealmem, 0}, 0, 0664},
 };
 
@@ -356,51 +360,58 @@ static long archread(struct chan *c, void *a, long n, int64_t offset)
 	Rdwrfn *fn;
 
 	switch ((uint32_t) c->qid.path) {
-
-		case Qdir:
-			return devdirread(c, a, n, archdir, narchdir, devgen);
-
-		case Qgdb:
-			p = gdbactive ? "1" : "0";
-			return readstr(offset, a, n, p);
-		case Qiob:
-			port = offset;
-			checkport(offset, offset + n);
+	case Qdir:
+		return devdirread(c, a, n, archdir, narchdir, devgen);
+		
+	case Qgdb:
+		p = gdbactive ? "1" : "0";
+		return readstr(offset, a, n, p);
+	case Qiob:
+		port = offset;
+		checkport(offset, offset + n);
 			for (p = a; port < offset + n; port++)
 				*p++ = inb(port);
 			return n;
 
-		case Qiow:
-			if (n & 1)
-				error(EINVAL, NULL);
-			checkport(offset, offset + n);
-			sp = a;
-			for (port = offset; port < offset + n; port += 2)
-				*sp++ = inw(port);
-			return n;
+	case Qiow:
+		if (n & 1)
+			error(EINVAL, NULL);
+		checkport(offset, offset + n);
+		sp = a;
+		for (port = offset; port < offset + n; port += 2)
+			*sp++ = inw(port);
+		return n;
+		
+	case Qiol:
+		if (n & 3)
+			error(EINVAL, NULL);
+		checkport(offset, offset + n);
+		lp = a;
+		for (port = offset; port < offset + n; port += 4)
+			*lp++ = inl(port);
+		return n;
+		
+	case Qioalloc:
+		break;
+		
+	case Qrealmem:
+		printk("readmem %p %p %p %p %p\n",offset, a, n, KADDR(0), 1048576);
+		return readmem(offset, a, n, KADDR(0), 1048576);
+		break;
 
-		case Qiol:
-			if (n & 3)
-				error(EINVAL, NULL);
-			checkport(offset, offset + n);
-			lp = a;
-			for (port = offset; port < offset + n; port += 4)
-				*lp++ = inl(port);
-			return n;
+	case Qapic:
+		s = apicdump(ttext, ttext + tlen);
+		return readstr(off, a, n, ttext);
 
-		case Qioalloc:
-			break;
+	case Qioapic:
+		s = ioapicdump(ttext, ttext + tlen);
+		return readstr(off, a, n, ttext);
 
-		case Qrealmem:
-			printk("readmem %p %p %p %p %p\n",offset, a, n, KADDR(0), 1048576);
-			return readmem(offset, a, n, KADDR(0), 1048576);
-			break;
-
-		default:
-			if (c->qid.path < narchdir && (fn = readfn[c->qid.path]))
-				return fn(c, a, n, offset);
-			error(EPERM, NULL);
-			break;
+	default:
+	  if (c->qid.path < narchdir && (fn = readfn[c->qid.path]))
+	    return fn(c, a, n, offset);
+	  error(EPERM, NULL);
+	  break;
 	}
 
 	if ((buf = kzmalloc(n, 0)) == NULL)

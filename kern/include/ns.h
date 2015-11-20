@@ -474,6 +474,7 @@ struct dirtab {
 	struct qid qid;
 	int64_t length;
 	long perm;
+	void *aux;
 };
 
 struct walkqid {

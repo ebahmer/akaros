@@ -79,22 +79,16 @@ enum {
 
 	CMregion = 0,	/* regio name spc base len accsz */
 	CMgpe,	/* gpe name id */
-
-	Qdir = 0,
-	Qctl,
-	Qtbl,
-	Qio,
-	Qpretty,
-	Qioapic,
-	Qapic,
-	Qraw,
-	Qdrhd,
 };
 
 /*
  * ACPI table (sw)
+ * includes pointers to functions used to parse and dump them. 
  */
 struct Atable {
+	struct Atable *read(uint8_t * p, int len);
+	char *pretty(char *start, char *end, struct Dmar *dt);
+	char *raw(char *start, char *end, struct Dmar *dt);
 	struct Atable *next;		/* next table in list */
 	int is64;					/* uses 64bits */
 	char sig[5];				/* signature */

@@ -91,6 +91,6 @@ void arch_init()
 	perfmon_init();
 	cons_irq_init();
 	intel_lpc_init();
-	usb_disable_legacy();
+	//usb_disable_legacy();
 	check_timing_stability();
 }
