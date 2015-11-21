@@ -58,7 +58,7 @@ static int lastPath = 1024;
 struct dev acpidevtab;
 
 static char *devname(void)
-{
+{I_AM_HERE;
 	return acpidevtab.name;
 }
 
@@ -103,7 +103,7 @@ static char *regnames[] = {
 static char *dumpGas(char *start, char *end, char *prefix, struct Gas *g);
 
 static char *acpiregstr(int id)
-{
+{I_AM_HERE;
 	static char buf[20];		/* BUG */
 
 	if (id >= 0 && id < ARRAY_SIZE(regnames)) {
@@ -114,7 +114,7 @@ static char *acpiregstr(int id)
 }
 
 static int acpiregid(char *s)
-{
+{I_AM_HERE;
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(regnames); i++)
@@ -127,87 +127,87 @@ static int acpiregid(char *s)
 // TODO fix these if we're ever on a different-endian machine. There not portable.
 // But who would be stupid enough to use ACPI anyway.
 static uint8_t mget8(uintptr_t p, void *unused)
-{
+{I_AM_HERE;
 	uint8_t *cp = (uint8_t *) p;
 	return *cp;
 }
 
 static void mset8(uintptr_t p, uint8_t v, void *unused)
-{
+{I_AM_HERE;
 	uint8_t *cp = (uint8_t *) p;
 	*cp = v;
 }
 
 static uint16_t mget16(uintptr_t p, void *unused)
-{
+{I_AM_HERE;
 	uint16_t *cp = (uint16_t *) p;
 	return *cp;
 }
 
 static void mset16(uintptr_t p, uint16_t v, void *unused)
-{
+{I_AM_HERE;
 	uint16_t *cp = (uint16_t *) p;
 	*cp = v;
 }
 
 static uint32_t mget32(uintptr_t p, void *unused)
-{
+{I_AM_HERE;
 	uint32_t *cp = (uint32_t *) p;
 	return *cp;
 }
 
 static void mset32(uintptr_t p, uint32_t v, void *unused)
-{
+{I_AM_HERE;
 	uint32_t *cp = (uint32_t *) p;
 	*cp = v;
 }
 
 static uint64_t mget64(uintptr_t p, void *unused)
-{
+{I_AM_HERE;
 	uint64_t *cp = (uint64_t *) p;
 	return *cp;
 }
 
 static void mset64(uintptr_t p, uint64_t v, void *unused)
-{
+{I_AM_HERE;
 	uint64_t *cp = (uint64_t *) p;
 	*cp = v;
 }
 
 static uint8_t ioget8(uintptr_t p, void *unused)
-{
+{I_AM_HERE;
 	return inb(p);
 }
 
 static void ioset8(uintptr_t p, uint8_t v, void *unused)
-{
+{I_AM_HERE;
 	outb(p, v);
 }
 
 static uint16_t ioget16(uintptr_t p, void *unused)
-{
+{I_AM_HERE;
 	return inw(p);
 }
 
 static void ioset16(uintptr_t p, uint16_t v, void *unused)
-{
+{I_AM_HERE;
 	outw(p, v);
 }
 
 static uint32_t ioget32(uintptr_t p, void *unused)
-{
+{I_AM_HERE;
 	return inl(p);
 }
 
 static void ioset32(uintptr_t p, uint32_t v, void *unused)
-{
+{I_AM_HERE;
 	outl(p, v);
 }
 
 /* TODO: these cfgs are hacky.	maybe all the struct Reg should have struct
  * pci_device or something? */
 static uint8_t cfgget8(uintptr_t p, void *r)
-{
+{I_AM_HERE;
 	struct Reg *ro = r;
 	struct pci_device pcidev;
 
@@ -216,7 +216,7 @@ static uint8_t cfgget8(uintptr_t p, void *r)
 }
 
 static void cfgset8(uintptr_t p, uint8_t v, void *r)
-{
+{I_AM_HERE;
 	struct Reg *ro = r;
 	struct pci_device pcidev;
 
@@ -225,7 +225,7 @@ static void cfgset8(uintptr_t p, uint8_t v, void *r)
 }
 
 static uint16_t cfgget16(uintptr_t p, void *r)
-{
+{I_AM_HERE;
 	struct Reg *ro = r;
 	struct pci_device pcidev;
 
@@ -234,7 +234,7 @@ static uint16_t cfgget16(uintptr_t p, void *r)
 }
 
 static void cfgset16(uintptr_t p, uint16_t v, void *r)
-{
+{I_AM_HERE;
 	struct Reg *ro = r;
 	struct pci_device pcidev;
 
@@ -243,7 +243,7 @@ static void cfgset16(uintptr_t p, uint16_t v, void *r)
 }
 
 static uint32_t cfgget32(uintptr_t p, void *r)
-{
+{I_AM_HERE;
 	struct Reg *ro = r;
 	struct pci_device pcidev;
 
@@ -252,7 +252,7 @@ static uint32_t cfgget32(uintptr_t p, void *r)
 }
 
 static void cfgset32(uintptr_t p, uint32_t v, void *r)
-{
+{I_AM_HERE;
 	struct Reg *ro = r;
 	struct pci_device pcidev;
 
@@ -324,7 +324,7 @@ regcpy(struct Regio *dio, uintptr_t da, struct Regio *sio,
  * All units in bytes.
  */
 static long regio(struct Reg *r, void *p, uint32_t len, uintptr_t off, int iswr)
-{
+{I_AM_HERE;
 	struct Regio rio;
 	uintptr_t rp;
 
@@ -399,7 +399,7 @@ struct Atable *new_acpi_table(uint8_t * p)
 }
 
 static void *sdtchecksum(void *addr, int len)
-{
+{I_AM_HERE;
 	uint8_t *p, sum;
 
 	sum = 0;
@@ -413,7 +413,7 @@ static void *sdtchecksum(void *addr, int len)
 }
 
 static void *sdtmap(uintptr_t pa, int *n, int cksum)
-{
+{I_AM_HERE;
 	struct Sdthdr *sdt;
 
 	if (!pa) {
@@ -442,7 +442,7 @@ static void *sdtmap(uintptr_t pa, int *n, int cksum)
 }
 
 static int loadfacs(uintptr_t pa)
-{
+{I_AM_HERE;
 	int n;
 
 	facs = sdtmap(pa, &n, 0);
@@ -466,7 +466,7 @@ static int loadfacs(uintptr_t pa)
 }
 
 static void loaddsdt(uintptr_t pa)
-{
+{I_AM_HERE;
 	int n;
 	uint8_t *dsdtp;
 
@@ -477,7 +477,7 @@ static void loaddsdt(uintptr_t pa)
 }
 
 static void gasget(struct Gas *gas, uint8_t * p)
-{
+{I_AM_HERE;
 	gas->spc = p[0];
 	gas->len = p[1];
 	gas->off = p[2];
@@ -486,7 +486,7 @@ static void gasget(struct Gas *gas, uint8_t * p)
 }
 
 static char *dumpfadt(char *start, char *end, struct Fadt *fp)
-{
+{I_AM_HERE;I_AM_HERE;
 	if (2 == 0) {
 		return NULL;
 	}
@@ -555,7 +555,7 @@ static char *dumpfadt(char *start, char *end, struct Fadt *fp)
 }
 
 static void acpifadt(struct Atable *a, uint8_t * p, int len)
-{
+{I_AM_HERE;
 	struct Fadt *fp;
 
 	if (len < 116) {
@@ -632,7 +632,7 @@ static void acpifadt(struct Atable *a, uint8_t * p, int len)
 }
 
 static char *dumpmsct(char *start, char *end, struct Msct *msct)
-{
+{I_AM_HERE;I_AM_HERE;
 	struct Mdom *st;
 
 	if (!msct)
@@ -651,7 +651,7 @@ static char *dumpmsct(char *start, char *end, struct Msct *msct)
  * Else we should remove this code.
  */
 static void acpimsct(struct Atable *a, uint8_t * p, int len)
-{
+{I_AM_HERE;
 	uint8_t *pe;
 	struct Mdom **stl, *st;
 	int off;
@@ -681,7 +681,7 @@ static char *dmartype[] = {"DRHD", "RMRR", "ATSR", "RHSA", "ANDD", };
 
 /* only handles on IOMMU for now. What a POS */
 static char *dumpdmar(char *start, char *end, struct Dmar *dt)
-{
+{I_AM_HERE;I_AM_HERE;
 	int i;
 	if (! dmar)
 		return start;
@@ -708,7 +708,7 @@ static char *dumpdmar(char *start, char *end, struct Dmar *dt)
 }
 
 static char *dumpsrat(char *start, char *end, struct Srat *st)
-{
+{I_AM_HERE;I_AM_HERE;
 	start = seprintf(start, end, "acpi: SRAT@%p:\n", st);
 	for (; st != NULL; st = st->next)
 		switch (st->type) {
@@ -739,7 +739,7 @@ static char *dumpsrat(char *start, char *end, struct Srat *st)
 }
 
 static void acpisrat(struct Atable *a, uint8_t * p, int len)
-{
+{I_AM_HERE;
 
 	struct Srat **stl, *st;
 	uint8_t *pe;
@@ -803,7 +803,7 @@ static void acpisrat(struct Atable *a, uint8_t * p, int len)
 }
 
 static char *dumpslit(char *start, char *end, struct Slit *sl)
-{
+{I_AM_HERE;I_AM_HERE;
 	int i;
 
 	if (!sl)
@@ -819,7 +819,7 @@ static char *dumpslit(char *start, char *end, struct Slit *sl)
 }
 
 static int cmpslitent(void *v1, void *v2)
-{
+{I_AM_HERE;
 	struct SlEntry *se1, *se2;
 
 	se1 = v1;
@@ -828,7 +828,7 @@ static int cmpslitent(void *v1, void *v2)
 }
 
 static void acpislit(struct Atable *a, uint8_t * p, int len)
-{
+{I_AM_HERE;
 
 	uint8_t *pe;
 	int i, j, k;
@@ -897,14 +897,14 @@ static char *trigger[] = {
 };
 
 static char *printiflags(char *start, char *end, int flags)
-{
+{I_AM_HERE;
 
 	return seprintf(start, end, "[%s,%s]",
 					polarity[flags & AFpmask], trigger[(flags & AFtmask) >> 2]);
 }
 
 static char *dumpmadt(char *start, char *end, struct Madt *apics)
-{
+{I_AM_HERE;I_AM_HERE;
 	struct Apicst *st;
 
 	start =
@@ -977,7 +977,7 @@ static char *dumpmadt(char *start, char *end, struct Madt *apics)
 }
 
 static void acpimadt(struct Atable *a, uint8_t * p, int len)
-{
+{I_AM_HERE;
 
 	uint8_t *pe;
 	struct Apicst *st, *l, **stl;
@@ -1097,7 +1097,7 @@ static void acpimadt(struct Atable *a, uint8_t * p, int len)
  */
 
 static void dscopes(uint8_t *p, struct Dtab *dtab, int tablen)
-{
+{I_AM_HERE;
 	int i;
 	int curoffset = 0;
 	dtab->drhd.nscope = 0;
@@ -1112,7 +1112,7 @@ static void dscopes(uint8_t *p, struct Dtab *dtab, int tablen)
 }
 
 static int dtab(uint8_t *p, struct Dtab *dtab)
-{
+{I_AM_HERE;
 	int len;
 	dtab->type = l16get(p);
 	p += 2;
@@ -1143,7 +1143,7 @@ static int dtab(uint8_t *p, struct Dtab *dtab)
 }
 
 static void acpidmar(struct Atable *a, uint8_t * p, int len)
-{
+{I_AM_HERE;
 	int i;
 	int baselen = len > 38 ? 38 : len;
 	int nentry, off;
@@ -1185,7 +1185,7 @@ static void acpidmar(struct Atable *a, uint8_t * p, int len)
  * Map the table and keep it there.
  */
 static void acpitable(struct Atable *a, uint8_t * p, int len)
-{
+{I_AM_HERE;
 	/* we found it. It's too small. now what? */
 	/* The previous code never even tested this case. The hell with it. */
 	if (len < Sdthdrsz) {
@@ -1195,7 +1195,7 @@ static void acpitable(struct Atable *a, uint8_t * p, int len)
 }
 
 static char *dumptable(char *start, char *end, char *sig, uint8_t * p, int l)
-{
+{I_AM_HERE;
 	int n, i;
 
 	if (2 > 1) {
@@ -1218,7 +1218,7 @@ static char *dumptable(char *start, char *end, char *sig, uint8_t * p, int l)
 }
 
 static char *seprinttable(char *s, char *e, struct Atable *t)
-{
+{I_AM_HERE;
 	uint8_t *p;
 	int i, n;
 
@@ -1236,7 +1236,7 @@ static char *seprinttable(char *s, char *e, struct Atable *t)
 }
 
 static void *rsdsearch(char *signature)
-{
+{I_AM_HERE;
 	uintptr_t p;
 	uint8_t *bda;
 	void *rsd;
@@ -1275,17 +1275,12 @@ static struct Parse ptables[] = {
 //	{"HPET", acpihpet,},
 };
 
-static void add(struct Atable *t, struct Atable *n)
-{
-	n->next = t->dot;
-	t->dot = n;
-}
 /*
  * process xsdt table and load tables with sig, or all if NULL.
  * (XXX: should be able to search for sig, oemid, oemtblid)
  */
 static int acpixsdtload(char *sig)
-{
+{I_AM_HERE;
 	struct Atable *a;
 	ERRSTACK(1);
 	int i, l, t, found;
@@ -1299,7 +1294,7 @@ static int acpixsdtload(char *sig)
 	}
 	
 	found = 0;
-	for (i = 0; i < xsdt->len; i += xsdt->asize) {
+	for (i = 0, root->dot = NULL; i < xsdt->len; i += xsdt->asize) {
 		if (xsdt->asize == 8)
 			dhpa = l64get(xsdt->p + i);
 		else
@@ -1318,7 +1313,10 @@ static int acpixsdtload(char *sig)
 				if (strcmp(a->sig, ptables[t].sig) == 0) {
 					//dumptable(table, &table[127], tsig, sdt, l);
 					ptables[t].f(a, sdt, l);
-					add(root, a);
+					if (root->dot == NULL)
+						root->dot = a;
+					a->next = root->dot;
+					root->dot = a;
 					found = 1;
 					break;
 				}
@@ -1328,7 +1326,7 @@ static int acpixsdtload(char *sig)
 }
 
 static void acpirsdptr(void)
-{
+{I_AM_HERE;
 	struct Rsdp *rsd;
 	int asize;
 	uintptr_t sdtpa;
@@ -1398,31 +1396,33 @@ static void acpirsdptr(void)
 static int
 acpigen(struct chan *c, char *name, struct dirtab *tab, int ntab,
 		int i, struct dir *dp)
-{
+{I_AM_HERE;
 	struct qid qid;
 	int el;
 	uint8_t *cp;
 	struct Atable *a = c->aux;
+	int ix;
 
-	qid = c->qid;
-	cp = (uint8_t *)&qid.path;
+	printk("name %s i %d\n", name, i);
 
 	if (i == DEVDOTDOT) {
 		devdir(c, a->dotdot->qid, devname(), 0, eve, 0555, dp);
 		return 1;
 	}
 
-	i++;	/* skip first element for . itself */
-	if (tab == 0 || i >= ntab) {
-		return -1;
+	for(ix = 0; (ix < i) && a; ix++) {
+		printk("a %p a->next %p\n", a, a->next);
+		a = a->next;
 	}
-
-	devdir(c, qid, tab->name, tab->length, eve, tab->perm, dp);
-	return 1;
+	printk("ix is %d and a is %p\n", ix, a);
+	if (ix < i || !a)
+		return 0;
+	devdir(c, a->qid, a->sig, 0, eve, 0555, dp);
+	return i;
 }
 
 static char *dumpGas(char *start, char *end, char *prefix, struct Gas *g)
-{
+{I_AM_HERE;
 	static char *rnames[] = {
 		"mem", "io", "pcicfg", "embed",
 		"smb", "cmos", "pcibar", "ipmi"
@@ -1463,7 +1463,7 @@ static char *dumpGas(char *start, char *end, char *prefix, struct Gas *g)
 }
 
 static unsigned int getbanked(uintptr_t ra, uintptr_t rb, int sz)
-{
+{I_AM_HERE;
 	unsigned int r;
 
 	r = 0;
@@ -1493,7 +1493,7 @@ static unsigned int getbanked(uintptr_t ra, uintptr_t rb, int sz)
 }
 
 static unsigned int setbanked(uintptr_t ra, uintptr_t rb, int sz, int v)
-{
+{I_AM_HERE;
 	unsigned int r;
 
 	r = -1;
@@ -1523,22 +1523,22 @@ static unsigned int setbanked(uintptr_t ra, uintptr_t rb, int sz, int v)
 }
 
 static unsigned int getpm1ctl(void)
-{
+{I_AM_HERE;
 	return getbanked(fadt.pm1acntblk, fadt.pm1bcntblk, fadt.pm1cntlen);
 }
 
 static void setpm1sts(unsigned int v)
-{
+{I_AM_HERE;
 	setbanked(fadt.pm1aevtblk, fadt.pm1bevtblk, fadt.pm1evtlen / 2, v);
 }
 
 static unsigned int getpm1sts(void)
-{
+{I_AM_HERE;
 	return getbanked(fadt.pm1aevtblk, fadt.pm1bevtblk, fadt.pm1evtlen / 2);
 }
 
 static unsigned int getpm1en(void)
-{
+{I_AM_HERE;
 	int sz;
 
 	sz = fadt.pm1evtlen / 2;
@@ -1546,12 +1546,12 @@ static unsigned int getpm1en(void)
 }
 
 static int getgpeen(int n)
-{
+{I_AM_HERE;
 	return inb(gpes[n].enio) & 1 << gpes[n].enbit;
 }
 
 static void setgpeen(int n, unsigned int v)
-{
+{I_AM_HERE;
 	int old;
 
 	old = inb(gpes[n].enio);
@@ -1562,18 +1562,18 @@ static void setgpeen(int n, unsigned int v)
 }
 
 static void clrgpests(int n)
-{
+{I_AM_HERE;
 	outb(gpes[n].stsio, 1 << gpes[n].stsbit);
 }
 
 static unsigned int getgpests(int n)
-{
+{I_AM_HERE;
 	return inb(gpes[n].stsio) & 1 << gpes[n].stsbit;
 }
 
 #if 0
 static void acpiintr(Ureg *, void *)
-{
+{I_AM_HERE;
 	int i;
 	unsigned int sts, en;
 
@@ -1603,7 +1603,7 @@ static void acpiintr(Ureg *, void *)
 }
 #endif
 static void initgpes(void)
-{
+{I_AM_HERE;
 	int i, n0, n1;
 
 	n0 = fadt.gpe0blklen / 2;
@@ -1631,7 +1631,7 @@ static void initgpes(void)
 }
 
 static void acpiioalloc(unsigned int addr, int len)
-{
+{I_AM_HERE;
 	if (addr != 0) {
 		printk("Just TAKING port %016lx to %016lx\n", addr, addr + len);
 		//ioalloc(addr, len, 0, "acpi");
@@ -1653,7 +1653,7 @@ int acpiinit(void)
 }
 
 static struct chan *acpiattach(char *spec)
-{
+{I_AM_HERE;
 	int i;
 	struct chan *c;
 	/*
@@ -1705,17 +1705,17 @@ static struct walkqid *acpiwalk(struct chan *c, struct chan *nc, char **name,
 }
 
 static int acpistat(struct chan *c, uint8_t * dp, int n)
-{
+{I_AM_HERE;
 	return devstat(c, dp, n, acpidir, ARRAY_SIZE(acpidir), acpigen);
 }
 
 static struct chan *acpiopen(struct chan *c, int omode)
-{
+{I_AM_HERE;
 	return devopen(c, omode, acpidir, ARRAY_SIZE(acpidir), acpigen);
 }
 
 static void acpiclose(struct chan *unused)
-{
+{I_AM_HERE;
 }
 
 static char *ttext;
@@ -1724,7 +1724,7 @@ static int tlen;
 // Get the table from the qid.
 // Read that one table using the pointers.
 static long acpiread(struct chan *c, void *a, long n, int64_t off)
-{
+{I_AM_HERE;
 	long q;
 	struct Atable *t;
 	char *ns, *s, *e, *ntext;
@@ -1738,7 +1738,8 @@ static long acpiread(struct chan *c, void *a, long n, int64_t off)
 	q = c->qid.vers;
 	switch (q) {
 	case Qdir:
-		return devdirread(c, a, n, acpidir, ARRAY_SIZE(acpidir), acpigen);
+		printk("acpiread: 0x%x\n", c->qid.path);
+		return devdirread(c, a, n, 0, 0, acpigen);
 	case Qraw:
 		return readmem(off, a, n, ttext, tlen);
 		break;
@@ -1771,13 +1772,15 @@ static long acpiread(struct chan *c, void *a, long n, int64_t off)
 		s = dumpdmar(s, e, dmar);
 		dumpmsct(s, e, msct);
 		return readstr(off, a, n, ttext);
+	default: 
+		error(EINVAL, "WHAT? %d\n", q);
 	}
 	error(EPERM, NULL);
 	return -1;
 }
 
 static long acpiwrite(struct chan *c, void *a, long n, int64_t off)
-{
+{I_AM_HERE;
 	error(EFAIL, "acpiwrite: not until we can figure out what it's for");
 #if 0
 	ERRSTACK(2);
