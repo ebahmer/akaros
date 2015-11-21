@@ -1417,6 +1417,7 @@ acpigen(struct chan *c, char *name, struct dirtab *tab, int ntab,
 		devdir(c, a->dotdot->qid, devname(), 0, eve, 0555, dp);
 		return 1;
 	}
+	a = a->dot;
 
 	for(ix = 0; (ix < i) && a; ix++) {
 		printk("a %p a->next %p\n", a, a->next);
