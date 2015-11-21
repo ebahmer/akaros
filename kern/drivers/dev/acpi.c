@@ -1293,6 +1293,14 @@ static int acpixsdtload(char *sig)
 		return 0;
 	}
 	
+	/* oh and, of course, the xsdt format is like no other. So fake it. */
+	root = kzmalloc(sizeof(*root), KMALLOC_WAIT);
+	root->is64 = 1;
+	root->dotdot = root;
+	root->dlen = 0;
+	mkqid(&root->qid, Qroot, 0, Qdir);
+
+	strlcpy(root->sig, "ACPI", sizeof(root->sig));
 	found = 0;
 	for (i = 0, root->dot = NULL; i < xsdt->len; i += xsdt->asize) {
 		if (xsdt->asize == 8)
@@ -1416,7 +1424,7 @@ acpigen(struct chan *c, char *name, struct dirtab *tab, int ntab,
 	}
 	printk("ix is %d and a is %p\n", ix, a);
 	if (ix < i || !a)
-		return 0;
+		return -1;
 	devdir(c, a->qid, a->sig, 0, eve, 0555, dp);
 	return i;
 }
@@ -1648,6 +1656,7 @@ int acpiinit(void)
 			return -1;
 		}
 	}
+
 	printk("ACPI initialized\n");
 	return 0;
 }
@@ -1694,7 +1703,7 @@ static struct chan *acpiattach(char *spec)
 		intrenable(fadt.sciint, acpiintr, 0, BUSUNKNOWN, "acpi");
 #endif
 	c = devattach(devname(), spec);
-	c->aux = xsdt;
+	c->aux = root;
 	return c;
 }
 
