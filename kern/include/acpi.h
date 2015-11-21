@@ -7,6 +7,35 @@
  * in the LICENSE file.
  */
 
+/* ACPI is really a mess. We're trying to unmess it.
+ * ACPI is a table of tables. The tables define a hierarchy.
+ *
+ * Each table that we care about has header, and the header has a
+ * length that includes the the length of all its subtables. So, even
+ * if you can't completely parse a table, you can find the next table.
+ * The process of parsing is to fine the RSDP, and then for each table
+ * inside, see what it is, and parse it. The process is recursive
+ * except for a few issues: The RSDP signature and header differs from
+ * the header of the tables it contains; their headers differ from the
+ * signatures of the tables they contain. As you walk down the tree,
+ * you need different parsers.
+ *
+ * So, in this case, it's something like this:
+ *
+ * RSDP is the root. It has a standard header and size. You map that
+ * memory.  You find the first header, get its type and size, and
+ * parse as much of it as you can. Parsing will involve either a
+ * function or case statement for each element type. DMARs are complex
+ * and need functions; APICs are simple and we can get by with case
+ * statements.
+ * 
+ * In the end we present a directory tree for #apic that looks, in this example:
+ * $ACPI/DMAR/DRHD/0/{pretty,raw}
+ * Catting pretty will return JSON-encoded data described the element. 
+ * Catting raw gets you the raw bytes.
+ * 
+ */
+
 #ifndef ROS_KERN_ACPI_H
 #define ROS_KERN_ACPI_H
 
@@ -84,18 +113,29 @@ enum {
 /*
  * ACPI table (sw)
  * includes pointers to functions used to parse and dump them. 
+ * This Atable struct corresponds to an interpretation of the standard header
+ * for all table types we support. It has two pointers, one to the raw data,
+ * and one to the converted data, i.e. the structs created by functions like
+ * acpimadt and so on. Note: althouh the various things in this are a superset of many
+ * ACPI table names (DRHD, DRHD scopes, etc.) we are going to fill them in so we can do a simplified
+ * walk. Will that work? Who knows?
  */
 struct Atable {
-	struct Atable *read(uint8_t * p, int len);
-	char *pretty(char *start, char *end, struct Dmar *dt);
-	char *raw(char *start, char *end, struct Dmar *dt);
-	struct Atable *next;		/* next table in list */
+	char (*pretty)(char *start, char *end, void *);
 	int is64;					/* uses 64bits */
+	/* For the gen function, we can use the signature. */
 	char sig[5];				/* signature */
 	char oemid[7];				/* oem id str. */
 	char oemtblid[9];			/* oem tbl. id str. */
-	uint8_t *tbl;				/* pointer to table in memory */
+	void *tbl;                              /* pointer to the "converted" table, e.g. madt, and so on. */
 	long dlen;					/* size of data in table, after Stdhdr */
+	struct Atable *dotdot;
+	// I thought about making this a table, but the basic model of this code right now is
+	// a linked list, so ... linked list it is.
+	struct Atable *next; /*sibling tables resulting from a scan. */
+	struct Atable *dot; /* children of this node. N.B. requires rewrite of all the scanners so we can use acpigen :-( */
+	struct qid qid;
+	uint8_t raw[];
 };
 
 struct Gpe {
@@ -110,7 +150,7 @@ struct Gpe {
 
 struct Parse {
 	char *sig;
-	struct Atable *(*f) (uint8_t * unused_uint8_p_t, int);	/* return NULL to keep vmap */
+	void (*f) (struct Atable *, uint8_t *, int);
 };
 
 struct Regio {

@@ -358,6 +358,7 @@ static long archread(struct chan *c, void *a, long n, int64_t offset)
 	uint32_t *lp;
 	IOMap *map;
 	Rdwrfn *fn;
+	void *s;
 
 	switch ((uint32_t) c->qid.path) {
 	case Qdir:
@@ -398,14 +399,6 @@ static long archread(struct chan *c, void *a, long n, int64_t offset)
 		printk("readmem %p %p %p %p %p\n",offset, a, n, KADDR(0), 1048576);
 		return readmem(offset, a, n, KADDR(0), 1048576);
 		break;
-
-	case Qapic:
-		s = apicdump(ttext, ttext + tlen);
-		return readstr(off, a, n, ttext);
-
-	case Qioapic:
-		s = ioapicdump(ttext, ttext + tlen);
-		return readstr(off, a, n, ttext);
 
 	default:
 	  if (c->qid.path < narchdir && (fn = readfn[c->qid.path]))
