@@ -1423,6 +1423,7 @@ monitor(0);
 	// First is always '.'
 	if (i == 0) {
 		devdir(c, a->qid, ".", 0, eve, 0555, dp);
+		c->aux = a;
 		return 1;
 	}
 while (a) {printk("a %p name %s. ", a, a->sig); a = a->next;}
@@ -1434,6 +1435,7 @@ while (a) {printk("a %p name %s. ", a, a->sig); a = a->next;}
 	if (ix < i || !a)
 		return -1;
 	devdir(c, a->qid, a->sig, 0, eve, 0555, dp);
+	c->aux = a;
 	printk("REturning %d\n", 1);
 	return 1;
 }
