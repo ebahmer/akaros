@@ -41,6 +41,9 @@
  * We might consider packing the "converted" structs and having Qpretty be a format string in perl format, e.g.
  * "xXsc" meaning 32, 64, 16, and 8 bit data. This is a wrinkle on quotefmtinstall. There are not enough characters
  * in the universe for all possible formats however. ACPI is a train wreck.
+ *
+ * Open question: for the FADT, should we just make it look like a one-level directory with pretty and raw in it?
+ * Is this whole file tree thing just stupid? Should it just be one giant JSON file? Should it be a bunch of files?
  */
 
 enum {
@@ -1300,7 +1303,7 @@ static int acpixsdtload(char *sig)
 	root->dlen = 0;
 	mkqid(&root->qid, Qroot, 0, Qdir);
 
-	strlcpy(root->sig, "ACPI", sizeof(root->sig));
+	strlcpy(root->sig, ".", sizeof(root->sig));
 	found = 0;
 	for (i = 0, root->dot = NULL; i < xsdt->len; i += xsdt->asize) {
 		if (xsdt->asize == 8)
@@ -1321,8 +1324,6 @@ static int acpixsdtload(char *sig)
 				if (strcmp(a->sig, ptables[t].sig) == 0) {
 					//dumptable(table, &table[127], tsig, sdt, l);
 					ptables[t].f(a, sdt, l);
-					if (root->dot == NULL)
-						root->dot = a;
 					a->next = root->dot;
 					root->dot = a;
 					found = 1;
@@ -1412,13 +1413,19 @@ acpigen(struct chan *c, char *name, struct dirtab *tab, int ntab,
 	int ix;
 
 	printk("name %s i %d\n", name, i);
+monitor(0);
 
 	if (i == DEVDOTDOT) {
 		devdir(c, a->dotdot->qid, devname(), 0, eve, 0555, dp);
 		return 1;
 	}
-	a = a->dot;
 
+	// First is always '.'
+	if (i == 0) {
+		devdir(c, a->qid, ".", 0, eve, 0555, dp);
+	}
+
+	i--;
 	for(ix = 0; (ix < i) && a; ix++) {
 		printk("a %p a->next %p\n", a, a->next);
 		a = a->next;
@@ -1427,7 +1434,8 @@ acpigen(struct chan *c, char *name, struct dirtab *tab, int ntab,
 	if (ix < i || !a)
 		return -1;
 	devdir(c, a->qid, a->sig, 0, eve, 0555, dp);
-	return i;
+	printk("REturning %d\n", 1);
+	return 1;
 }
 
 static char *dumpGas(char *start, char *end, char *prefix, struct Gas *g)
