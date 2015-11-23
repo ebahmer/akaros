@@ -1305,7 +1305,7 @@ static int acpixsdtload(char *sig)
 
 	strlcpy(root->sig, ".", sizeof(root->sig));
 	found = 0;
-	for (i = 0, root->dot = NULL; i < xsdt->len; i += xsdt->asize) {
+	for (i = 0, root->next = NULL; i < xsdt->len; i += xsdt->asize) {
 		if (xsdt->asize == 8)
 			dhpa = l64get(xsdt->p + i);
 		else
@@ -1324,8 +1324,8 @@ static int acpixsdtload(char *sig)
 				if (strcmp(a->sig, ptables[t].sig) == 0) {
 					//dumptable(table, &table[127], tsig, sdt, l);
 					ptables[t].f(a, sdt, l);
-					a->next = root->dot;
-					root->dot = a;
+					a->next = root->next;
+					root->next = a;
 					found = 1;
 					break;
 				}
@@ -1423,10 +1423,10 @@ monitor(0);
 	// First is always '.'
 	if (i == 0) {
 		devdir(c, a->qid, ".", 0, eve, 0555, dp);
+		return 1;
 	}
-
-	i--;
-	for(ix = 0; (ix < i) && a; ix++) {
+while (a) {printk("a %p name %s. ", a, a->sig); a = a->next;}
+	for(ix = 1; (ix < i) && a; ix++) {
 		printk("a %p a->next %p\n", a, a->next);
 		a = a->next;
 	}
