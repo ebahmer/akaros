@@ -1426,7 +1426,7 @@ monitor(0);
 		c->aux = a;
 		return 1;
 	}
-while (a) {printk("a %p name %s. ", a, a->sig); a = a->next;}
+
 	for(ix = 1; (ix < i) && a; ix++) {
 		printk("a %p a->next %p\n", a, a->next);
 		a = a->next;
