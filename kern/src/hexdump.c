@@ -72,11 +72,12 @@ void pahexdump(uintptr_t pa, int len)
 }
 
 /* Print a string, with printables preserved, and \xxx where not possible. */
-int printdump(char *buf, int buflen, uint8_t *data)
+int printdump(char *buf, int numprint, int buflen, uint8_t *data)
 {
 	int ret = 0;
 	int ix = 0;
-	while (ret < buflen) {
+	buf[ret++] = '\'';
+	while (ix < numprint && ret < (buflen-2)) {
 		if (isprint(data[ix])) {
 			buf[ret++] = data[ix];
 		} else if (ret < buflen - 4) {
@@ -87,5 +88,6 @@ int printdump(char *buf, int buflen, uint8_t *data)
 		}
 		ix++;
 	}
+	buf[ret++] = '\'';
 	return ret;
 }

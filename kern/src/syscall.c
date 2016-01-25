@@ -54,37 +54,37 @@ static size_t systrace_fill_pretty_buf(struct systrace_record *trace)
 	size_t len = 0;
 	struct timespec ts_start;
 	struct timespec ts_end;
+	char what = 'X';
 	tsc2timespec(trace->start_timestamp, &ts_start);
 	tsc2timespec(trace->end_timestamp, &ts_end);
+	if (trace->end_timestamp == 0)
+		what = 'E';
 
 	len = snprintf(trace->pretty_buf, SYSTR_PRETTY_BUF_SZ - len,
-	           "[%7d.%09d]-[%7d.%09d] Syscall %3d (%12s):(0x%llx, 0x%llx, "
+	           "%c [%7d.%09d]-[%7d.%09d] Syscall %3d (%12s):(0x%llx, 0x%llx, "
 	           "0x%llx, 0x%llx, 0x%llx, 0x%llx) ret: 0x%llx proc: %d core: %d "
 	           "vcore: %d data: ",
-	           ts_start.tv_sec,
-	           ts_start.tv_nsec,
-	           ts_end.tv_sec,
-	           ts_end.tv_nsec,
-	           trace->syscallno,
-	           syscall_table[trace->syscallno].name,
-	           trace->arg0,
-	           trace->arg1,
-	           trace->arg2,
-	           trace->arg3,
-	           trace->arg4,
-	           trace->arg5,
-	           trace->retval,
-	           trace->pid,
-	           trace->coreid,
-	           trace->vcoreid);
-	/* if we have extra data, print it out on the next line, lined up nicely.
-	 * this is only useful for looking at the dump in certain terminals.  if we
-	 * have a tool that processes the info, we shouldn't do this. */
-	if (trace->datalen)
-		len += snprintf(trace->pretty_buf + len, SYSTR_PRETTY_BUF_SZ - len,
-		                "\n%67s", "");
+		       what,
+		       ts_start.tv_sec,
+		       ts_start.tv_nsec,
+		       ts_end.tv_sec,
+		       ts_end.tv_nsec,
+		       trace->syscallno,
+		       syscall_table[trace->syscallno].name,
+		       trace->arg0,
+		       trace->arg1,
+		       trace->arg2,
+		       trace->arg3,
+		       trace->arg4,
+		       trace->arg5,
+		       trace->retval,
+		       trace->pid,
+		       trace->coreid,
+		       trace->vcoreid);
+
 	len += printdump(trace->pretty_buf + len,
-	                 MIN(trace->datalen, SYSTR_PRETTY_BUF_SZ - len - 1),
+			 trace->datalen,
+	                 SYSTR_PRETTY_BUF_SZ - len - 1,
 	                 trace->data);
 	len += snprintf(trace->pretty_buf + len, SYSTR_PRETTY_BUF_SZ - len, "\n");
 	return len;
@@ -759,6 +759,11 @@ static ssize_t sys_fork(env_t* e)
 	/* Copy some state from the original proc into the new proc. */
 	env->heap_top = e->heap_top;
 	env->env_flags = e->env_flags;
+	if (e->strace) {
+		kref_get(&e->strace->users, 1);
+		kref_get(&e->strace->procs, 1);
+		env->strace = e->strace;
+	}
 
 	/* In general, a forked process should be a fresh process, and we copy over
 	 * whatever stuff is needed between procinfo/procdata. */
@@ -1773,7 +1778,7 @@ intreg_t sys_readlink(struct proc *p, char *path, size_t path_l,
 
 	if (symname){
 		copy_amt = strnlen(symname, buf_l - 1) + 1;
-		if (! memcpy_to_user_errno(p, u_buf, symname, copy_amt))
+		if (!memcpy_to_user_errno(p, u_buf, symname, copy_amt))
 			ret = copy_amt - 1;
 	}
 	if (path_d)
@@ -2274,7 +2279,7 @@ intreg_t sys_rename(struct proc *p, char *old_path, size_t old_path_l,
 	}
 
 	mlen = convD2M(&dir, mbuf, sizeof(mbuf));
-	if (! mlen) {
+	if (!mlen) {
 		printk("convD2M failed\n");
 		set_errno(EINVAL);
 		goto done;
@@ -2466,6 +2471,90 @@ const struct sys_table_entry syscall_table[] = {
 	[SYS_tap_fds] = {(syscall_t)sys_tap_fds, "tap_fds"},
 };
 const int max_syscall = sizeof(syscall_table)/sizeof(syscall_table[0]);
+
+struct systrace_record *sctrace(struct systrace_record *trace,
+				struct proc *p,
+				uintreg_t sc_num,
+				uintreg_t a0,
+				uintreg_t a1,
+				uintreg_t a2,
+				uintreg_t a3,
+				uintreg_t a4,
+				uintreg_t a5,
+				uintreg_t ret)
+{
+	int n;
+	uintreg_t cp = 0;
+	int datalen = 0;
+
+	if (!p->strace)
+		return NULL;
+
+	if (!p->strace->q || qisclosed(p->strace->q))
+		return NULL;
+
+	if (!trace) {
+		// TODO: could we allocb and then write that block?
+		// Still, if we're tracing, we take a hit, and this is so
+		// much more efficient than strace it's not clear we care.
+		trace = kmalloc(SYSTR_BUF_SZ, 0);
+
+		if (!trace)
+			return NULL;
+
+		int coreid, vcoreid;
+		struct proc *p = current;
+
+		coreid = core_id();
+		vcoreid = proc_get_vcoreid(p);
+
+		// TODO: functionalize this, if we decide this
+		// approach is OK.
+		trace->start_timestamp = read_tsc();
+		trace->end_timestamp = 0;
+		trace->syscallno = sc_num;
+		trace->arg0 = a0;
+		trace->arg1 = a1;
+		trace->arg2 = a2;
+		trace->arg3 = a3;
+		trace->arg4 = a4;
+		trace->arg5 = a5;
+		trace->pid = p->pid;
+		trace->coreid = coreid;
+		trace->vcoreid = vcoreid;
+		trace->pretty_buf = (char*)trace + sizeof(struct systrace_record);
+		trace->datalen = 0;
+		trace->data[0] = 0;
+		switch (sc_num) {
+			case SYS_write:
+				cp = a1;
+				datalen = a2;
+				break;
+			case SYS_openat:
+				cp = a1;
+				datalen = a2;
+				break;
+		}
+	} else {
+		trace->end_timestamp = read_tsc();
+		trace->retval = ret;
+		switch (sc_num) {
+		case SYS_read:
+			cp = a1;
+			datalen = ret < 0 ? 0 : ret;
+			break;
+		}
+
+	}
+
+	trace->datalen = MIN(sizeof(trace->data), datalen);
+	memmove(trace->data, (void *)cp, trace->datalen);
+	n = systrace_fill_pretty_buf(trace);
+	qwrite(p->strace->q, trace->pretty_buf, n);
+	return trace;
+}
+
+
 /* Executes the given syscall.
  *
  * Note tf is passed in, which points to the tf of the context on the kernel
@@ -2477,9 +2566,13 @@ const int max_syscall = sizeof(syscall_table)/sizeof(syscall_table[0]);
 intreg_t syscall(struct proc *p, uintreg_t sc_num, uintreg_t a0, uintreg_t a1,
                  uintreg_t a2, uintreg_t a3, uintreg_t a4, uintreg_t a5)
 {
+	struct systrace_record *trace = NULL;
 	struct per_cpu_info *pcpui = &per_cpu_info[core_id()];
 	intreg_t ret = -1;
 	ERRSTACK(1);
+
+	if (p->strace)
+		trace = sctrace(NULL, p, sc_num, a0, a1, a2, a3, a4, a5, 0);
 
 	if (sc_num > max_syscall || syscall_table[sc_num].call == NULL) {
 		printk("[kernel] Invalid syscall %d for proc %d\n", sc_num, p->pid);
@@ -2495,11 +2588,18 @@ intreg_t syscall(struct proc *p, uintreg_t sc_num, uintreg_t a0, uintreg_t a1,
 		/* if we got here, then the errbuf was right.
 		 * no need to check!
 		 */
+		kfree(trace);
 		return -1;
 	}
 	//printd("before syscall errstack %p\n", errstack);
 	//printd("before syscall errstack base %p\n", get_cur_errbuf());
 	ret = syscall_table[sc_num].call(p, a0, a1, a2, a3, a4, a5);
+	/* This is a little hokey if tracing got turned on between call and
+	 * return. We'll probably want to improve this a bit. */
+	if (p->strace && trace)
+		sctrace(trace, p, sc_num, a0, a1, a2, a3, a4, a5, ret);
+
+	kfree(trace);
 	//printd("after syscall errstack base %p\n", get_cur_errbuf());
 	if (get_cur_errbuf() != &errstack[0]) {
 		/* Can't trust coreid and vcoreid anymore, need to check the trace */

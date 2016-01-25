@@ -211,7 +211,7 @@ struct proc *pid_nth(unsigned int n)
 		 * so continue
 		 */
 
-		if (kref_get_not_zero(&p->p_kref, 1)){
+		if (kref_get_not_zero(&p->p_kref, 1)) {
 			/* this one counts */
 			if (! n){
 				printd("pid_nth: at end, p %p\n", p);
@@ -220,7 +220,7 @@ struct proc *pid_nth(unsigned int n)
 			kref_put(&p->p_kref);
 			n--;
 		}
-		if (!hashtable_iterator_advance(iter)){
+		if (!hashtable_iterator_advance(iter)) {
 			p = NULL;
 			break;
 		}
@@ -882,6 +882,12 @@ void proc_destroy(struct proc *p)
 	close_fdt(&p->open_files, FALSE);
 	/* Tell the ksched about our death, and which cores we freed up */
 	__sched_proc_destroy(p, pc_arr, nr_cores_revoked);
+	if (p->strace) {
+		kref_put(&p->strace->procs);
+		kref_put(&p->strace->users);
+		p->strace = NULL;
+	}
+
 	/* Tell our parent about our state change (to DYING) */
 	proc_signal_parent(p);
 }

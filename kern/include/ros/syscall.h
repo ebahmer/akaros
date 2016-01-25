@@ -1,5 +1,6 @@
 #pragma once
 
+#include <kref.h>
 #include <ros/bits/syscall.h>
 #include <ros/arch/syscall.h>
 #include <ros/event.h>
@@ -13,6 +14,15 @@
 #define SC_ABORT				0x0010		/* syscall abort attempted */
 
 #define MAX_ERRSTR_LEN			128
+
+struct strace {
+	bool opened;
+	bool tracing;
+	bool inherit;
+	struct kref procs; /* when procs goes to zero, q is hung up. */
+	struct kref users; /* when users goes to zero, q and struct are freed. */
+	struct queue *q;
+};
 
 struct syscall {
 	unsigned int				num;

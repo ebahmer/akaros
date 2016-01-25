@@ -79,8 +79,11 @@ struct chan *fdtochan(struct fd_table *fdt, int fd, int mode, int chkmnt,
 	if ((mode & c->mode) != mode) {
 		if (iref)
 			cclose(c);
-		error(EBADF, "FD access mode failure: chan mode 0x%x, wanted 0x%x",
-		      c->mode, mode);
+		/* this is such bullshit. You can't quote a string across lines, and you
+		 * can't make a long quoted string. Linux programming guidelines, Herman
+		 * Hollerith called from 1890 and he wants his 80 columns back. */
+		error(EBADF, "FD access mode failure: chan mode 0x%x, wanted 0x%x %s",
+			c->mode, mode, "(opened with 0 instead of O_READ?)");
 	}
 	return c;
 }

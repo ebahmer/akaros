@@ -118,6 +118,8 @@ struct proc {
 
 	/* VMMCP */
 	struct vmm vmm;
+
+	struct strace                              *strace;
 };
 
 /* Til we remove all Env references */

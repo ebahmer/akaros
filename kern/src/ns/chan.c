@@ -305,15 +305,16 @@ void chanfree(struct chan *c)
 	spin_unlock(&(&chanalloc)->lock);
 }
 
-void cclose(struct chan *c)
+int cclose(struct chan *c)
 {
 	if (c == 0)
-		return;
+		return 0;
 
 	if (c->flag & CFREE)
 		panic("cclose %p", getcallerpc(&c));
 
 	kref_put(&c->ref);
+	return kref_refcnt(&c->ref);
 }
 
 /* convenience wrapper for interposition.  if you do use this, don't forget
