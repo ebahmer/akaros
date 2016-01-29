@@ -1,5 +1,8 @@
 obj-y						+= address_range.o
 obj-y						+= circular_buffer.o
+obj-y						+= fortuna.o
+obj-y						+= rijndael.o
+obj-y						+= sha2.o
 obj-y						+= slice.o
 obj-y						+= sort.o
 obj-y						+= zlib_deflate/
