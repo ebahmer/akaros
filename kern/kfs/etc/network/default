@@ -11,6 +11,7 @@ tower2MAC=00032d196ddd
 tower3MAC=00032d196d46
 tower4MAC=00032d196db0
 tower5MAC=00032d196daa
+vmwareMAC=000c29cfde0e
 
 # qemu is the default
 me=10.0.2.15
@@ -28,6 +29,13 @@ fi
 
 # the tower of ... tower
 # all defaults are fine.
+if [ "$MAC" = "$vmwareMAC" ]
+then
+	me=192.168.28.16
+	mask=255.255.255.0
+	remote=192.168.28.0
+	route=192.168.28.2
+fi
 if [ "$MAC" = "$tower1MAC" ]
 then
     me=10.0.2.15
