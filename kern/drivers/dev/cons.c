@@ -17,6 +17,8 @@
 #include <atomic.h>
 #include <smp.h>
 #include <error.h>
+#include <sys/queue.h>
+#include <event.h>
 
 #if 0
 void (*consdebug) (void) = NULL;
@@ -88,6 +90,7 @@ static int readtime(uint32_t, char *, int);
 static int readbintime(char *, int);
 static int writetime(char *, int);
 static int writebintime(char *, int);
+static void killkid(void);
 
 enum {
 	CMbroken,
@@ -96,6 +99,7 @@ enum {
 	CMnobroken,
 	CMpanic,
 	CMreboot,
+	CMkillkid,
 };
 
 
@@ -106,6 +110,7 @@ struct cmdtab rebootmsg[] = {
 	{CMnobroken, "nobroken", 0},
 	{CMpanic, "panic", 0},
 	{CMreboot, "reboot", 0},
+	{CMkillkid, "killkid", 0},
 };
 
 void printinit(void)
@@ -606,6 +611,7 @@ enum {
 	Qtime,
 	Quser,
 	Qzero,
+	Qkillkid,
 };
 
 enum {
@@ -619,6 +625,8 @@ static struct dirtab consdir[] = {
 	{"config", {Qconfig}, 0, 0444},
 	{"cons", {Qcons}, 0, 0660},
 	{"consctl", {Qconsctl}, 0, 0220},
+	// FIXME -- we don't have real permissions yet so we set it to 222, not 220
+	{"killkid", {Qkillkid}, 0, 0220 | /* BOGUS */ 2},
 	{"cputime", {Qcputime}, 6 * NUMSIZE, 0444},
 	{"drivers", {Qdrivers}, 0, 0444},
 	{"hostdomain", {Qhostdomain}, DOMLEN, 0664},
@@ -1042,6 +1050,11 @@ static long conswrite(struct chan *c, void *va, long n, int64_t off)
 			}
 			break;
 
+		/* TODO: have it take a command about just *how* to kill the kid? */
+		case Qkillkid:
+			killkid();
+			break;
+
 		case Qconsctl:
 			if (n >= sizeof(buf))
 				n = sizeof(buf) - 1;
@@ -1125,6 +1138,10 @@ static long conswrite(struct chan *c, void *va, long n, int64_t off)
 				case CMpanic:
 					*(uint32_t *) 0 = 0;
 					panic("/dev/reboot");
+					break;
+				case CMkillkid:
+					killkid();
+					break;
 			}
 			poperror();
 			kfree(cb);
@@ -1392,4 +1409,26 @@ static int writebintime(char *buf, int n)
 			break;
 	}
 	return n;
+}
+
+/*
+ * quick depth first search for somone to kill.  This is a reasonable
+ * standin for "kill most distant child" that is also reasonably fast.
+ * No locking, totaly unsafe.  yep, this is ugly. Once we have cmux we
+ * might not need it. But consider that most alternatives involve
+ * walking proc in user mode ... yuck!
+ */
+void killkid(void)
+{
+	struct proc *victim = NULL, *kid;
+
+	kid = current;
+	while (kid) {
+		victim = kid;
+		kid = TAILQ_FIRST(&victim->children);
+	}
+	if (victim) {
+		printk("killkid: killing %d\n", victim->pid);
+		send_posix_signal(victim, SIGINT);
+	}
 }
