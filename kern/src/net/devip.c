@@ -100,6 +100,12 @@ extern char *eve;
 static long ndbwrite(struct Fs *, char *unused_char_p_t, uint32_t, int);
 static void closeconv(struct conv *);
 
+static struct conv *chan2conv(struct chan *chan)
+{
+	/* That's a lot of pointers to get to the conv! */
+	return ipfs[chan->dev]->p[PROTO(chan->qid)]->conv[CONV(chan->qid)];
+}
+
 static inline int founddevdir(struct chan *c, struct qid q, char *n,
 							  int64_t length, char *user, long perm,
 							  struct dir *db)
@@ -123,7 +129,7 @@ static int ip3gen(struct chan *c, int i, struct dir *dp)
 	struct conv *cv;
 	char *p;
 
-	cv = ipfs[c->dev]->p[PROTO(c->qid)]->conv[CONV(c->qid)];
+	cv = chan2conv(c);
 	if (cv->owner == NULL)
 		kstrdup(&cv->owner, eve);
 	mkqid(&q, QID(PROTO(c->qid), CONV(c->qid), i), 0, QTFILE);
@@ -453,7 +459,6 @@ static struct chan *ipopen(struct chan *c, int omode)
 				error(ENODEV, ERROR_FIXME);
 				break;
 			}
-			/* we only honor nonblock on a clone */
 			if (c->flag & O_NONBLOCK)
 				Fsconvnonblock(cv, TRUE);
 			mkqid(&c->qid, QID(p->x, cv->x, Qctl), 0, QTFILE);
@@ -1138,21 +1143,6 @@ static void bindctlmsg(struct Proto *x, struct conv *c, struct cmdbuf *cb)
 		x->bind(c, cb->f, cb->nf);
 }
 
-static void nonblockctlmsg(struct conv *c, struct cmdbuf *cb)
-{
-	if (cb->nf < 2)
-		goto err;
-	if (!strcmp(cb->f[1], "on"))
-		Fsconvnonblock(c, TRUE);
-	else if (!strcmp(cb->f[1], "off"))
-		Fsconvnonblock(c, FALSE);
-	else
-		goto err;
-	return;
-err:
-	error(EINVAL, "nonblock [on|off]");
-}
-
 static void shutdownctlmsg(struct conv *cv, struct cmdbuf *cb)
 {
 	if (cb->nf < 2)
@@ -1244,8 +1234,6 @@ static long ipwrite(struct chan *ch, void *v, long n, int64_t off)
 				announcectlmsg(x, c, cb);
 			else if (strcmp(cb->f[0], "bind") == 0)
 				bindctlmsg(x, c, cb);
-			else if (strcmp(cb->f[0], "nonblock") == 0)
-				nonblockctlmsg(c, cb);
 			else if (strcmp(cb->f[0], "shutdown") == 0)
 				shutdownctlmsg(c, cb);
 			else if (strcmp(cb->f[0], "ttl") == 0)
@@ -1347,20 +1335,13 @@ static void ip_wake_cb(struct queue *q, void *data, int filter)
 
 int iptapfd(struct chan *chan, struct fd_tap *tap, int cmd)
 {
-	struct conv *conv;
-	struct Proto *x;
-	struct Fs *f;
+	struct conv *conv = chan2conv(chan);
 	int ret;
 
 	#define DEVIP_LEGAL_DATA_TAPS (FDTAP_FILT_READABLE | FDTAP_FILT_WRITABLE | \
 	                               FDTAP_FILT_HANGUP | FDTAP_FILT_PRIORITY |   \
 	                               FDTAP_FILT_ERROR)
 	#define DEVIP_LEGAL_LISTEN_TAPS (FDTAP_FILT_READABLE | FDTAP_FILT_HANGUP)
-
-	/* That's a lot of pointers to get to the conv! */
-	f = ipfs[chan->dev];
-	x = f->p[PROTO(chan->qid)];
-	conv = x->conv[CONV(chan->qid)];
 
 	switch (TYPE(chan->qid)) {
 		case Qdata:
@@ -1429,6 +1410,20 @@ int iptapfd(struct chan *chan, struct fd_tap *tap, int cmd)
 	}
 }
 
+int ipctl(struct chan *chan, int flags)
+{
+	struct conv *cv = chan2conv(chan);
+
+	/* We could imaging doing qid checks, e.g. only Qdata or Qlisten *chans* can
+	 * be the gateways to set things like nonblock.  But it doesn't really
+	 * matter, and it might be neat to set nonblock on the ctl. */
+	if ((flags & O_NONBLOCK) && !cv->nonblock)
+		Fsconvnonblock(cv, TRUE);
+	else if (!(flags & O_NONBLOCK) && cv->nonblock)
+		Fsconvnonblock(cv, FALSE);
+	return 0;
+}
+
 struct dev ipdevtab __devtab = {
 	.name = "ip",
 
@@ -1450,6 +1445,7 @@ struct dev ipdevtab __devtab = {
 	.power = devpower,
 	.chaninfo = ipchaninfo,
 	.tapfd = iptapfd,
+	.ctl = ipctl,
 };
 
 int Fsproto(struct Fs *f, struct Proto *p)

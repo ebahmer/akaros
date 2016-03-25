@@ -47,8 +47,8 @@ static char *devname(void)
 	return pipedevtab.name;
 }
 
-typedef struct Pipe Pipe;
-struct Pipe {
+typedef struct pipe Pipe;
+struct pipe {
 	qlock_t qlock;
 	Pipe *next;
 	struct kref ref;
@@ -282,7 +282,9 @@ static struct chan *pipeopen(struct chan *c, int omode)
 	}
 	poperror();
 	qunlock(&p->qlock);
-
+	// XXX
+//	if (c->flag & O_NONBLOCK)
+//		pipe_nonblock(p, TRUE);
 	c->mode = openmode(omode);
 	c->flag |= COPEN;
 	c->offset = 0;
@@ -555,6 +557,39 @@ static int pipetapfd(struct chan *chan, struct fd_tap *tap, int cmd)
 	}
 }
 
+static void pipe_chan_nonblock(struct chan *chan, bool onoff)
+{
+	struct pipe *p = chan->aux;
+
+	printk("PIPE chan %p NB set %d\n", chan, onoff);
+	switch (NETTYPE(chan->qid.path)) {
+	case Qdata0:
+		qnonblock(p->q[0], onoff);
+	case Qdata1:
+		qnonblock(p->q[1], onoff);
+	}
+}
+	// XXX this is still fucked, since the underlying Q is shared by both ends,
+	// and now they are both nonblock
+	// 		we want one END of a qio queue.
+	//
+	// could switch on the chan flag and do an individual qop that doesn't
+	// block?
+	// 		and do this in IP as well...
+	// 		it's all still in the endpoint
+
+	// XXX open
+	//
+	// XXX chaninfo? (taps and nonblock)
+int pipectl(struct chan *chan, int flags)
+{
+	if (flags & O_NONBLOCK)
+		pipe_chan_nonblock(chan, TRUE);
+	else if (!(flags & O_NONBLOCK))
+		pipe_chan_nonblock(chan, FALSE);
+	return 0;
+}
+
 struct dev pipedevtab __devtab = {
 	.name = "pipe",
 
@@ -576,4 +611,5 @@ struct dev pipedevtab __devtab = {
 	.power = devpower,
 	.chaninfo = devchaninfo,
 	.tapfd = pipetapfd,
+	.ctl = pipectl,
 };

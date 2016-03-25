@@ -9,7 +9,7 @@
  * #define for PLAN9NET. */
 
 /* Comment this out for BSD sockets */
-#define PLAN9NET
+//#define PLAN9NET
 
 #include <stdlib.h>
 #include <stdio.h>

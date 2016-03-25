@@ -1436,6 +1436,7 @@ int fd_setfl(int fd, int flags)
 {
 	ERRSTACK(1);
 	struct chan *c;
+	int ret = 0;
 
 	if (waserror()) {
 		poperror();
@@ -1448,8 +1449,16 @@ int fd_setfl(int fd, int flags)
 	}
 	if (cexternal_flags_differ(flags, c->flag, O_PATH))
 		error(EINVAL, "can't toggle O_PATH with setfl");
+
+	// XXX ctl?  ccntl?  chan_ctl?
+	if (devtab[c->type].ctl)
+		ret = devtab[c->type].ctl(c, flags & CEXTERNAL_FLAGS);
+
+	// XXX set the flag before or after?  i guess they know we will set c->flag
+	// to flags shortly
 	c->flag = (c->flag & ~CEXTERNAL_FLAGS) | (flags & CEXTERNAL_FLAGS);
-	cclose(c);
+
+	cclose(c); // XXX leaking this on error (in original code too)
 	poperror();
-	return 0;
+	return ret;
 }
