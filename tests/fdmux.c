@@ -64,14 +64,21 @@ main(void)
 			atexit(unraw);
 	}
 
-	if ((dirfd = open("#fdmux", O_PATH)) < 0)
+
+	/* Bind #fdmux into /dev before everything. That way any subprocess will find it
+	 * from our device.
+	 */
+	if (syscall(SYS_nbind, "#fdmux", strlen("#fdmux"), "/dev", 4, /*MBEFORE*/ 1) < 0)
 		sysfatal(smprint("%r"));
 
-	if ((ctl = openat(dirfd, "ctl", O_RDWR)) < 0)
+	if ((dirfd = open("/dev", O_PATH)) < 0)
 		sysfatal(smprint("%r"));
-	if ((m = openat(dirfd, "m", O_RDWR)) < 0)
+
+	if ((ctl = openat(dirfd, "consctl", O_RDWR)) < 0)
 		sysfatal(smprint("%r"));
-	if ((s = openat(dirfd, "s", O_RDWR)) < 0)
+	if ((m = openat(dirfd, "consmaster", O_RDWR)) < 0)
+		sysfatal(smprint("%r"));
+	if ((s = openat(dirfd, "cons", O_RDWR)) < 0)
 		sysfatal(smprint("%r"));
 
 	pid = fork();

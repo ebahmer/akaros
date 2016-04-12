@@ -90,9 +90,9 @@ enum {
 static
 struct dirtab fdmuxdir[] = {
 	{".", {Qdir, 0, QTDIR}, 0, DMDIR | 0500},
-	{"m", {Qm}, 0, 0660},
-	{"s", {Qs}, 0, 0660},
-	{"ctl",		{Qctl},	0,		0600},
+	{"consmaster", {Qm}, 0, 0660},
+	{"cons", {Qs}, 0, 0660},
+	{"consctl",		{Qctl},	0,		0600},
 };
 
 static void freefdmux(struct FDMux *p)
