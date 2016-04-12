@@ -67,7 +67,7 @@ struct chan *fdtochan(struct fd_table *fdt, int fd, int mode, int chkmnt,
 	if (!c) {
 		/* We lost the info about why there was a problem (we used to track file
 		 * group closed too, can add that in later). */
-		error(EBADF, ERROR_FIXME);
+		error(EBADF, "fdtochan(%p, %d, %d, %d, %d) %s(%d)", fdt, fd, mode, chkmnt, iref, current->progname, current->pid);
 	}
 	if (chkmnt && (c->flag & CMSG)) {
 		if (iref)

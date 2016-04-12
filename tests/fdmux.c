@@ -32,7 +32,7 @@ smprint(const char *fmt, ...)
 
 void sysfatal(char *s)
 {
-	fprintf(stderr, "%s\n", s);
+	fprintf(stderr, "\nbailing out near line 666\n%s\n", s);
 	exit(1);
 }
 
