@@ -20,6 +20,8 @@
 #include <sys/queue.h>
 #include <event.h>
 #include <ros/procinfo.h>
+#include <console.h>
+#include <umem.h>
 
 #if 0
 void (*consdebug) (void) = NULL;
@@ -611,6 +613,10 @@ enum {
 	Quser,
 	Qzero,
 	Qkillkid,
+
+	/* Old devfs stuff -- isolate it for now. */
+	Qstdin,
+	Qstdout,
 };
 
 enum {
@@ -646,6 +652,11 @@ static struct dirtab consdir[] = {
 	{"time", {Qtime}, NUMSIZE + 3 * VLNUMSIZE, 0664},
 	{"user", {Quser}, 0, 0666},
 	{"zero", {Qzero}, 0, 0444},
+
+	/* Old devfs stuff -- isolate it for now. */
+	{"stdin", {Qstdin}, 0, 0444},
+	{"stdout", {Qstdout}, 0, 0222},
+	{"stderr", {Qstdout}, 0, 0222},
 };
 
 int consreadnum(uint32_t off, char *buf, uint32_t n, uint32_t val, int size)
@@ -771,6 +782,7 @@ static long consread(struct chan *c, void *buf, long n, int64_t off)
 #if 0
 	extern char configfile[];
 #endif
+	extern struct kb_buffer cons_buf;
 
 	if (n <= 0)
 		return n;
@@ -1005,6 +1017,18 @@ static long consread(struct chan *c, void *buf, long n, int64_t off)
 			n = consreadstr((uint32_t) offset, buf, n, tmp);
 			return n;
 
+	case Qstdin:
+		if (!n)
+			return 0;
+		kb_get_from_buf(&cons_buf, &ch, 1);
+		/* TODO UMEM */
+		if (current)
+			memcpy_to_user_errno(current, buf, &ch, 1);
+		else
+			memcpy(buf, &ch, 1);
+		return 1;
+		break;
+
 		default:
 			printd("consread %#llux\n", c->qid.path);
 			error(EINVAL, "bad QID in consread");
@@ -1028,6 +1052,8 @@ static long conswrite(struct chan *c, void *va, long n, int64_t off)
 	uint64_t rip, rsp, cr3, flags, vcpu;
 	int ret;
 	struct vmctl vmctl;
+	char *t_buf;
+	struct proc *p = current;
 
 	a = va;
 	offset = off;
@@ -1189,6 +1215,23 @@ static long conswrite(struct chan *c, void *va, long n, int64_t off)
 				buf[n - 1] = 0;
 			kstrdup(&sysname, buf);
 			break;
+
+	case Qstdout:
+		if (p)
+			t_buf = user_strdup_errno(p, va, n);
+		else
+			t_buf = (char*)va;
+		if (!t_buf)
+			return -1;
+		/* TODO: tty hack.  they are sending us an escape sequence, and the keyboard
+		 * would try to print it (which it can't do yet).  The hack is even dirtier
+		 * in that we only detect it if it is the first char, and we ignore
+		 * everything else. */
+		if (t_buf[0] != '\033') /* 0x1b */
+			cputbuf(t_buf, n);
+		if (p)
+			user_memdup_free(p, t_buf);
+		break;
 
 		default:
 			printd("conswrite: %#llux\n", c->qid.path);

@@ -283,6 +283,19 @@ struct page_map_operations block_pm_op = {
 	block_readpage,
 };
 
+static int dev_c_llseek(struct file *file, off64_t offset, off64_t *ret, int whence)
+{
+	set_errno(EINVAL);
+	return -1;
+}
+
+/* we don't allow mmapping of any device file */
+static int dev_mmap(struct file *file, struct vm_region *vmr)
+{
+	set_errno(EINVAL);
+	return -1;
+}
+
 /* Block device file ops: for now, we don't let you do much of anything */
 struct file_operations block_f_op = {
 	dev_c_llseek,

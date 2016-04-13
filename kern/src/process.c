@@ -393,11 +393,12 @@ error_t proc_alloc(struct proc **pp, struct proc *parent, int flags)
 	} else {
 		/* no parent, we're created from the kernel */
 		int fd;
-		fd = insert_file(&p->open_files, dev_stdin,  0, TRUE, FALSE);
+		switch_to(p);
+		fd = sysopenat(AT_FDCWD, "#cons/stdin", O_RDONLY);
 		assert(fd == 0);
-		fd = insert_file(&p->open_files, dev_stdout, 1, TRUE, FALSE);
+		fd = sysopenat(AT_FDCWD, "#cons/stdout", O_WRONLY);
 		assert(fd == 1);
-		fd = insert_file(&p->open_files, dev_stderr, 2, TRUE, FALSE);
+		fd = sysopenat(AT_FDCWD, "#cons/stderr", O_WRONLY);
 		assert(fd == 2);
 	}
 	/* Init the ucq hash lock */
