@@ -99,7 +99,9 @@ static void pipe_release(struct kref *kref)
 
 static void pipeinit(void)
 {
-	pipealloc.pipeqsize = 32 * 1024;
+	// TODO: figure out why we need this. As soon as you scp a file bigger
+	// than 32M, scp will stall.
+	pipealloc.pipeqsize = 32 * 1024 * 1024;
 }
 
 /*
